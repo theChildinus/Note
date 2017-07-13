@@ -2,141 +2,41 @@
 #include "node.h"
 %}
 
-%token MODULE VAR ASSIGN TRANS CASE ESAC INIT NEXT TRUE FALSE
-%token RANGE_OP INIT_OP
+%token TRUE FALSE
+%token INTEGER BOOLEAN
+%token <m_string>IDENTIFIER
+%token <m_int>NUMBER
 
-%token INTEGER BOOLEAN ENUM WORD SIGNED UNSIGNED 
-
-%token<m_string>IDENTIFIER
-%token<m_int>CONSTANT
-
-
-%start file
+%start constant
 
 %%
-
-file
-    : module
-    | file module
-    ;
-
-module
-    : declaration_module declaration_vars
-    | declaration_module declaration_vars initialization_vars
-    | declaration_module declaration_vars initialization_vars transition_vars
-    ;
-
-declaration_module
-    : MODULE IDENTIFIER
-    {
-        cout << "module: " << $2 << endl;
-    }
-    ;
-
-declaration_vars
-    : VAR statement_list
-    {
-    	cout << "VAR: " << $2 << endl;
-    }
-    ;
-
-initialization_vars
-    : ASSIGN statement_list
-    ;
-
-transition_vars
-    : TRANS statement_list
-
-statement_list
-    : statement
-    | statement_list statement
-    ;
-
-statement
-    : expression_statement
-    | switch_statement
-    ;
-
-expression_statement
-    : ';'
-    | expression ';'
-    ;
-
-switch_statement
-    : CASE statement_list ESAC
-    ;
-
-expression
-    : unary_expression
-    | unary_expression operator expression
-    | conditional_expression ':' expression
-    ;
-
-unary_expression
-    : primary_expression
-    | INIT '(' primary_expression ')'
-    | NEXT '(' primary_expression ')'
-    | '(' expression ')'
-    ;
-
-primary_expression
-    : IDENTIFIER
-    {
-        cout << "identifier: " << $1 << endl;
-    }
-    | CONSTANT
-    {
-        cout << "constant: " << $1 << endl;
-    }
-    ;
-
-operator
-    : ':'
-    | INIT_OP
-    | '='
-    | RANGE_OP
-    | '%'
-    ;
-
-conditional_expression
-    : equality_expression
-    ;
-
-equality_expression
-    : primary_expression '=' primary_expression
-    ;
 
 constant
 	: boolean_constant
+	| integer_constant
+	| symoblic_constant
 	;
 
 boolean_constant
-	: FALSE
-	{
-		cout << ">>>> false " << endl;
-	}
-	| TRUE
-	{
-		cout << ">>>> true " << endl;
-	}
+	: TRUE { cout << "TRUE" << endl; }
+	| FALSE { cout << "FALSE" << endl; }
+	;
+	
+integer_constant
+	: integer_number
 	;
 
-type_specifier
-	: simple_type_specifier
-	| module_type_specifier
+symoblic_constant
+	: IDENTIFIER { cout << "Identifier: " << $1 << endl; }
 	;
 
-simple_type_specifier
-	: BOOLEAN
-	| WORD '[' basic_expr ']'
-	| UNSIGNED WORD '[' basic_expr ']'
-	| SIGNED WORD '[' basic_expr ']'
-	| '{' enumeration_type_body '}'
-	| basic_expr RANGE_OP basic_expr
+integer_number
+	: NUMBER { cout << "Number: " << $1 << endl; }
+	| '-' NUMBER { cout << "Number: " << $2 << endl; }
+	| integer_number NUMBER { cout << "Number: " << $2 << endl; }
 	;
 
 %%
-
 void yyerror(const char* s) {
     cerr << s << endl;
 }

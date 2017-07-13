@@ -1,3 +1,4 @@
+
 %{
 #include "node.h"
 #include "yacc.tab.h"
@@ -7,40 +8,20 @@
 %x COMMENT
 
 DIGIT   [0-9]
-LETTER   [a-zA-Z_]
+LETTER  [a-zA-Z_]
 
 %%
 
 "--" { BEGIN COMMENT; }
 
-"MODULE" { return (MODULE); }
-"VAR" { return VAR; }
-"ASSIGN" { return ASSIGN; }
-"TRANS" { return TRANS; }
-"init" { return INIT; }
-"next" { return NEXT; }
-"case" { return CASE; }
-"esac" { return ESAC; }
+"integer" { return INTEGER; }
+"boolean" { return BOOLEAN; }
+
 "TRUE" { return TRUE; }
 "FALSE" { return FALSE; }
 
-"integer" { return INTEGER; }
-"boolean" { return BOOLEAN; }
-"enum" { return ENUM; }
-"word" { return WORD; }
-"signed" { return SIGNED; }
-"unsigned" { return UNSIGNED; }
 
-".." { return RANGE_OP; }
-":=" { return INIT_OP; }
-"mod" { return '%'; }
-":" { return (':'); }
-";" { return (';'); }
-"(" { return ('('); }
-")" { return (')'); }
-"=" { return ('='); }
-"+" { return ('+'); }
-{DIGIT}+ { yylval.m_int = stoi(yytext); return CONSTANT; }
+{DIGIT}+ { yylval.m_int = stoi(yytext); return NUMBER; }
 {LETTER}({LETTER}|{DIGIT})* { yylval.m_string = yytext; return IDENTIFIER; }
 
 [ \f\r\t\v\n]+ { /* 忽略 */ }
@@ -53,7 +34,6 @@ LETTER   [a-zA-Z_]
 <COMMENT>. {    // 匹配注释状态下的其他字符
     // 忽略
 }
-
 
 %%
 
