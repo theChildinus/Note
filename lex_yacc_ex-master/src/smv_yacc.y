@@ -3,37 +3,34 @@
 %}
 
 %token TRUE FALSE
-%token INTEGER BOOLEAN
+%token BOOLEAN
 %token <m_string>IDENTIFIER
-%token <m_int>NUMBER
+%token <m_int>INTEGER
 
 %start constant
 
 %%
 
 constant
-	: boolean_constant
+	: symoblic_constant
+	| constant symoblic_constant
+	| boolean_constant
+	| constant boolean_constant
 	| integer_constant
-	| symoblic_constant
+	| constant integer_constant
 	;
 
 boolean_constant
-	: TRUE { cout << "TRUE" << endl; }
-	| FALSE { cout << "FALSE" << endl; }
+	: TRUE { cout << "match ture" << endl; }
+	| FALSE { cout << "match false" << endl; }
+	;
+
+integer_constant
+	: INTEGER {cout << "Integer:" << $1 << endl;}
 	;
 	
-integer_constant
-	: integer_number
-	;
-
 symoblic_constant
 	: IDENTIFIER { cout << "Identifier: " << $1 << endl; }
-	;
-
-integer_number
-	: NUMBER { cout << "Number: " << $1 << endl; }
-	| '-' NUMBER { cout << "Number: " << $2 << endl; }
-	| integer_number NUMBER { cout << "Number: " << $2 << endl; }
 	;
 
 %%

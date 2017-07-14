@@ -11,17 +11,14 @@ DIGIT   [0-9]
 LETTER  [a-zA-Z_]
 
 %%
-
 "--" { BEGIN COMMENT; }
 
-"integer" { return INTEGER; }
 "boolean" { return BOOLEAN; }
 
 "TRUE" { return TRUE; }
 "FALSE" { return FALSE; }
 
-
-{DIGIT}+ { yylval.m_int = stoi(yytext); return NUMBER; }
+{DIGIT}+ { yylval.m_int = stoi(yytext); return INTEGER; }
 {LETTER}({LETTER}|{DIGIT})* { yylval.m_string = yytext; return IDENTIFIER; }
 
 [ \f\r\t\v\n]+ { /* 忽略 */ }
