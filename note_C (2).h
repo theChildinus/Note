@@ -753,6 +753,124 @@ pc所指的真实对象是一个int 而非字符
 
 ####### 第五章 语句 ########
 
+vector<int> v;
+int i;
+while (cin >> i)
+{
+	v.push_back(i);
+}
+auto beg = v.begin();
+while (beg != v.end() && *beg >= 0)
+{
+	++beg;
+}
+if (beg == v.end())
+{
+	//
+}
 
+for (decltype(s.size() index = 0; 
+	 index != s.size() && !isspace(s[index]); ++index)
+	 {
+		 s[index] = toupper(s[index]);
+	 }
+
+for (decltype(v.size()) i = 0, sz = v.size(); i != sz; i++)
+{
+	v.push_back(v[i]);
+}
+
+vector<int> v = {0,1,2,3,4,5,6,7,8,9};
+for (auto &r : v)
+{
+	r *= 2;
+}
+
+break语句 终止他最近的while do while for 或switch 语句
+从这些语句之后的第一条语句开始执行
+continue语句 终止最近的循环中的当前迭代，立即开始下一次迭代
+
+string buf;
+while (cin >> buf && !buf.empty())
+{
+	if (buf[0] != '_')
+	{
+		continue;
+	}
+}
+goto end;
+int ix = 10;
+end:
+	ix = 42; //false goto绕过了ix的声明
+
+begin:
+	int sz = get_size();
+	if (sz <= 0)
+	{
+		goto begin;
+	}
+
+if (item1.isbn() != item2.isbn())
+{
+	throw runtime_error("Data must refer to same isbn"); //defined in stdexcept.h
+}
+cout << item1 + item2 << endl;
+
+while (cin >> item1 >> item2)
+{
+	try
+	{
+		
+	}catch(runtime_error err)
+	{
+		cout << err.what()
+		<< "\n Try Again? Enter y or n" << endl;
+		char c;
+		cin >> c;
+		if (!cin || c != 'n')
+		{
+			break; //跳出while循环
+		}
+	}
+}
+
+标准异常
+exception.h 只报告异常的发生 不提供额外信息
+stdexcept.h 定义了几种常用的异常类
+new头文件定义了bad_malloc异常类型
+type_info定义了bad_cast异常类型
+
+####### 第六章 函数 #######
+
+int fact(int val)
+{
+	int ret = 1;
+	while (val > 1)
+	{
+		ret *= val--;
+	}
+	return ret;
+}
+
+int main()
+{
+	int j = fact(5);
+	cout << "5! is" << j << endl;
+	return 0;
+}
+
+fact函数的等价形式：
+int val = 5;
+int ret = 1;
+while (val > 1)
+{
+	ret *= val--;
+}
+int j = ret;
+
+int f1(int v1, v2) //false
+int f2(int v1, int v2) //true
+函数返回的类型不能是数组类型或函数类型
+但可以是指向数组的指针 或 函数的指针
 
 
