@@ -1,0 +1,4 @@
+abc defghi
+// this line is comment, abc 123 !@#$
+123 45678 //comment until line end
+!  @  #  $
