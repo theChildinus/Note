@@ -13,12 +13,18 @@ LETTER  [a-zA-Z_]
 %%
 "--" { BEGIN COMMENT; }
 
+"integer" { return INTEGER; }
 "boolean" { return BOOLEAN; }
+
+"VAR" { return VAR; }
 
 "TRUE" { return TRUE; }
 "FALSE" { return FALSE; }
+"," { return (','); }
+":" { return (':'); }
+";" { return (';'); }
 
-{DIGIT}+ { yylval.m_int = stoi(yytext); return INTEGER; }
+{DIGIT}+ { yylval.m_int = stoi(yytext); return NUMBERS; }
 {LETTER}({LETTER}|{DIGIT})* { yylval.m_string = yytext; return IDENTIFIER; }
 
 [ \f\r\t\v\n]+ { /* 忽略 */ }

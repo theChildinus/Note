@@ -3,34 +3,63 @@
 %}
 
 %token TRUE FALSE
-%token BOOLEAN
+%token INTEGER BOOLEAN
+%token VAR
 %token <m_string>IDENTIFIER
-%token <m_int>INTEGER
+%token <m_int>NUMBERS
 
-%start constant
+%start file
 
 %%
-
-constant
-	: symoblic_constant
-	| constant symoblic_constant
-	| boolean_constant
-	| constant boolean_constant
-	| integer_constant
-	| constant integer_constant
+file
+	: basic_expr_list
+	| var_declaration
+	| file var_declaration
 	;
 
+var_declaration
+	: VAR var_list
+	;
+
+var_list
+	: IDENTIFIER ':' type_specifier ';'
+	{
+		cout << "Identifier: " << $1 << endl;
+	}
+	| var_list IDENTIFIER ':' type_specifier ';'
+	;
+
+type_specifier
+	: BOOLEAN { cout << "match BOOLEAN" << endl; }
+	| INTEGER { cout << "match INTEGER" << endl; }
+	;
+
+basic_expr_list
+	: basic_expr
+	| basic_expr_list ',' basic_expr
+	;
+	
+basic_expr
+	: constant
+	;
+	
+constant
+	: symoblic_constant
+	| boolean_constant
+	| integer_constant
+	;
+	
+symoblic_constant
+	: IDENTIFIER { cout << "Identifier: " << $1 << endl; }
+	;	
+	
 boolean_constant
 	: TRUE { cout << "match ture" << endl; }
 	| FALSE { cout << "match false" << endl; }
 	;
 
 integer_constant
-	: INTEGER {cout << "Integer:" << $1 << endl;}
-	;
-	
-symoblic_constant
-	: IDENTIFIER { cout << "Identifier: " << $1 << endl; }
+	: NUMBERS {cout << "Number:" << $1 << endl;}
 	;
 
 %%
