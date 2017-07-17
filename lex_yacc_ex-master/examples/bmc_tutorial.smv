@@ -1,6 +1,33 @@
--- A simple counter
-123 , 333 , FALSE , TRUE
-VAR s : boolean ;
-VAR t : integer ;
+-- A simple example
+MODULE main [ ( void ) ]
+[
+	DEFINE x := exp1 .. exp2 ;
+	VAR s : boolean ;
+	VAR t : integer ;
+
+	IVAR i : boolean ;
+	IVAR m : integer ;
+
+	FROZENVAR n : boolean ;
+	FROZENVAR a : integer ;
+
+	ASSIGN
+		a := exp ;
+		init(b) := TRUE ;
+		init(student.name) := exp3 ;
+		init(student[0]) := exp4 ;
+
+		next(c) := exp5 ;
+		next(Sale.sum) := 2222 ;
+		next(state[1]) := FALSE ;
+
+	TRANS
+		case
+			x < 10 : y = 10 ;
+			FALSE : y = 5 ; 
+		esac
+]
+
+
 
 
