@@ -438,7 +438,7 @@ for (int *b = arr; b != e; b++)
 	cout << *b << endl;
 
 int ia[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
-int *beg = begin(a); //ia首元素的指针
+int *beg = begin(ia); //ia首元素的指针
 int *last = end(ia); //指向arr尾元素的下一位置的指针
 begin end函数定义在iterator头文件中
 尾后指针不能执行解引用和递增操作
@@ -872,5 +872,180 @@ int f1(int v1, v2) //false
 int f2(int v1, int v2) //true
 函数返回的类型不能是数组类型或函数类型
 但可以是指向数组的指针 或 函数的指针
+
+只存在于块执行期间的对象称为 自动对象
+
+size_t count_calls()
+{
+	static size_t ctr = 0;  //局部静态变量
+	return ++ctr;
+}
+int main()
+{
+	for (size_t i = 0; i != 10; ++i)
+	{
+		cout << count_calls() << endl;
+	}
+	return 0;
+}  //每次执行count_calls函数时，变量ctr的值 都已经存在并且等于函数上一次退出时 ctr的值
+
+函数声明
+void print(vector<int>::const_iterator beg, vector<int>::const_iterator end);
+含有函数声明的头文件应该被包含到定义函数的源文件中
+
+void reset(int *ip) //指针形参
+{
+	*ip = 0; //改变指针ip所指对象的值
+	ip = 0;  //只改变了ip的局部拷贝 实参未被改变
+}
+
+int i = 42;
+reset(&i);   //改变i的值 并非地址
+cout << "i = " << i << endl; //输出i = 0
+
+void reset(int &i)  //引用形参
+{
+	i = 0; //改变了i所引对象的值
+}
+int j = 42;
+reset(j);  //j采用传引用方式 它的值被改变
+cout << "j = " << j << endl; //输出j = 0
+
+使用引用 避免拷贝
+bool isShorter(const string &s1, const string &s2)
+{
+	return s1.size() < s2.size();
+}
+如果函数无须改变引用形参的值 最好将其声明为常量引用
+
+string::size_type find_char(const string &s, char c, string::size_type &occurs)
+{
+	auto ret = s.size();
+	occurs = 0;
+	for (decltype(ret) i = 0; i != s.size(); ++i)
+	{
+		if (s[i] == c)
+		{
+			if(ret == s.size())
+				ret = i;
+		}
+		++occurs;
+	}
+	return ret;
+}
+
+auto index = find_char(s, 'o', ctr);
+调用完成后，ctr表示o出现的次数 index 表示o第一次出现的位置
+否则 index 等于s.size() ctr = 0
+
+int i = 0;
+const int *cp = &i;  //正确 但是cp不能改变i
+const int &r = i;   //正确 但是 r 不能改变i
+const int &r2 = 42; //正确
+int *p = cp;    //错误 p的类型与cp的类型不匹配
+int &r3 = r;    //错误 r3的类型与r的类型不匹配
+int &r4 = 42;   //错误 不能用字面值初始化一个非常量引用 允许字面值初始化常量引用
+
+int i = 0;
+const int ci = i;
+string::size_type ctr = 0;
+调用形参类型为int* 的reset函数
+reset(&i);   正确
+reset(&ci);  错误 不能用指向const int对象的指针初始化int *
+调用形参类型为int& 的reset函数
+reset(i);    正确
+reset(ci);   错误 不能把普通引用绑定到const对象ci上
+reset(42);   错误 不能把普通引用绑定到字面值上
+reset(ctr);  错误 类型不匹配ctr是无符号类型
+
+void print(const int*)
+void print(const int[])
+void print(const int[10])
+三个print函数等价 每个都有一个const int*类型的形参
+int i = 0, j[2] = {0, 1};
+print(&i);
+print(j);
+
+管理指针形参三种常用技术
+使用标记指定数组长度
+使用标准库规范
+int j[2] = {0, 1};
+print(begin(j), end(j));
+显式传递一个表示数组大小的形参
+void print(const int ia[], size_t size)
+{
+	for (size_t i = 0; i != size; ++i)
+	{
+		cout << ia[i] << endl;
+	}
+}
+int j[] = {0, 1};
+print(j, end(j) - begin(j));
+
+void print(int (&arr)[10]) //&arr[10] 表示引用的数组 (&arr)[10] 表示10个整数的整形数组的引用
+{
+	for (autp item : arr)
+		cout << item << endl;
+}
+
+void print(int (*matrix)[10], int rowSize) {/* */}
+等价与 void print(int matrix[][10], int rowSize) {/* */}
+matrix声明成指向含有10个整数的数组的指针
+
+实参数量未知但是全部实参的类型都相同 可以使用
+initializer_list类型的形参
+initializer_list<string> ls;
+和vector不一样的是 initializer_list对象中的元素永远都是常量值
+
+void error_msg(initializer_list<string> il)
+{
+	for (auto beg = il.begin(); beg != il.end(); ++beg)
+	{
+		cout << *beg << " ";
+	}
+	cout << endl;
+}
+
+if (expected != actual)
+{
+	error_msg({"functionX", expected, actual});
+}
+else
+{
+	error_msg({"functionX", "okay"});
+}
+
+void error_msg(ErrCode e, initializer_list<string> il)
+{
+	cout << e.msg() << endl;
+	for (const auto &elem : il)
+	{
+		cout << elem << " ";
+	}
+	cout << endl;
+}
+
+if (expected != actual)
+{
+	error_msg(ErrCode(42), {"functionX", expected, actual});
+}
+else
+{
+	error_msg(ErrCode(0), {"functionX", "okay"});
+}
+
+在含有return语句的循环后面应该有一条return语句
+如果没有的话 该程序是错误的 很多编译器都无法发现此类错误
+
+const string &shorterString(const string &s1, const string &s2)
+{
+	return s1.size() <= s2.size() ? s1 : s2;
+}
+其中形参和返回类型都是const string的引用，不管是调用函数还是返回结果都不会真正拷贝string对象
+
+不要返回局部对象的 引用或指针 函数完成后 它所占用的存储空间就会被释放
+
+
+
 
 
