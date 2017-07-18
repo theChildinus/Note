@@ -1,6 +1,6 @@
 int sum = 0, value,
 	units_sold = 0;
-	
+
 std::string book("111")
 
 初始化不是赋值， 初始化的含义是创建变量时赋予其一个初始值
@@ -14,7 +14,7 @@ extern int i 声明但不显式初始化 显式初始化变成了定义
 变量能且只能被定义一次 但可以声明多次
 
 C++静态类型
-int ival = 1024; 
+int ival = 1024;
 int &refval = ival;
 int &refval2 //报错
 引用并非对象 相反的 它只是给一个已经存在的对象所另起的一个名字
@@ -168,7 +168,7 @@ struct Sales_data
 using std::cin;
 int main()
 {
-	int i; 
+	int i;
 	cin >> i;
 	cout << i; //false
 	std::cout << i;
@@ -409,8 +409,8 @@ const char a4[6] = "daniel" //错误 没有空间可以存放空字符
 
 从数组名开始由内向外的顺序阅读
 int *prts[10];  //prts是一个含有10个整型指针的数组
-int &refs[10] = /*?*/;  //错误 不存在引用的数组 
-int (*parray)[10] = &arr; // parray 指向一个含有10个整数的数组 
+int &refs[10] = /*?*/;  //错误 不存在引用的数组
+int (*parray)[10] = &arr; // parray 指向一个含有10个整数的数组
 int (&arrRef)[10] = arr;  //arrRef 引用一个含有10个整数的数组  arrRef是引用
 
 int *(&array)[10] = ptrs; //array是一个含有10个int型指针的数组的引用
@@ -499,7 +499,7 @@ vector<int> subvec(int_arr + 1, int_arr + 4);
 
 
 
-int ia[3][4] = 
+int ia[3][4] =
 {
 	{0, 1, 2, 3},
 	{4, 5, 6, 7},
@@ -546,7 +546,7 @@ for (const auto row : ia)
 要使用范围for语句处理多维数组，除了最内层的循环外，其他所有循环的控制变量都应该是引用类型
 
 
-int ia[3][4]; 
+int ia[3][4];
 int (*p)[4] = ia;  //p指向含有4个整数的数组 p是指针
 p = &ia[2];    //p指向ia的尾元素
 
@@ -769,7 +769,7 @@ if (beg == v.end())
 	//
 }
 
-for (decltype(s.size() index = 0; 
+for (decltype(s.size() index = 0;
 	 index != s.size() && !isspace(s[index]); ++index)
 	 {
 		 s[index] = toupper(s[index]);
@@ -820,7 +820,7 @@ while (cin >> item1 >> item2)
 {
 	try
 	{
-		
+
 	}catch(runtime_error err)
 	{
 		cout << err.what()
@@ -1045,7 +1045,91 @@ const string &shorterString(const string &s1, const string &s2)
 
 不要返回局部对象的 引用或指针 函数完成后 它所占用的存储空间就会被释放
 
+返回类类型的函数和调用运算符
+auto sz = shorterString(s1, s2).size()
+
+引用返回左值
+char &get_val(string &str, string::size_type ix)
+{
+	return str[ix];
+}
+int main()
+{
+	string s("a value");
+	cout << s << endl;
+	get_val(s, 0) = 'A';   //将s[0] 改为 ‘A	’
+	cout << s << endl;
+	shorterString("hi", "bye") = "X"; //错误 返回值是个常量
+	return 0;
+}
+
+列表初始化返回值
+vector<string> process()
+{
+	if (expected.empty())
+		return {};
+	else if (expected == actual)
+		return {"functionX", "okay"};
+	else
+		return {"functionX", expected, actual};
+}
+
+int main()
+{
+	if (some_failure)
+		return EXIT_FAILURE;
+	else
+		return EXIT_SUCCESS;
+}
+
+typedef int arrT[10];
+using arrT = int[10];
+arrT* func(int i);  //func返回一个指向含有10个整数的数组的指针
+
+int (*func(int i))[10];
+(*func(int i))[10] 表示解引用func的调用将得到一个大小为10的数组
+
+尾置返回类型
+auto func(int i) -> int(*)[10];
+func 接收一个int类型的实参 返回一个指针 该指针指向含有10个整数的数组  
+
+int odd[] = {1,3,5,7,9};
+int even[] = {0,2,4,6,8};
+decltype(odd) *arrPtr(int i)
+{
+	return (i % 2) ? &odd : &even; //返回一个指向数组的指针
+}
+
+arrPtr 返回一个指向含有5个整数的数组的指针
+decltype 并不负责把数组类型转换成对应的指针
 
 
 
+函数重载
+
+void print(const char *op);
+void print(const int *beg, const int *end);
+void print(const int ia[], size_t size);
+
+Record lookup(const Account&)
+bool lookup(const Account&) //false
+
+Record lookup(Phone);
+Record lookup(const Phone); //顶层const不影响传入函数的对象
+
+Record lookup(Account&);     函数作用于Account的引用
+Record lookup(const Account&); 新函数 作用于常量引用
+Record lookup(Account*);     新函数 作用于指向account的指针
+Record lookup(const Account*); 新函数 作用于指向常量的指针
+
+
+string &shorterString(string &s1, string &s2)
+{
+	auto &r = shorterString(const_cast<const string&>(s1), const_cast<const string&>(s2));
+	return const_cast<string&> (r);
+}
+首先将实参强制转化成对const的引用
+然后调用shorterString的const版本
+const版本返回对const string的引用 这个引用事实上绑定在了某个初试的非常量实参上
+因此我们可以将其再转换回一个普通的string&
 
