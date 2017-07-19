@@ -840,6 +840,9 @@ stdexcept.h 定义了几种常用的异常类
 new头文件定义了bad_malloc异常类型
 type_info定义了bad_cast异常类型
 
+
+
+
 ####### 第六章 函数 #######
 
 int fact(int val)
@@ -1133,3 +1136,151 @@ string &shorterString(string &s1, string &s2)
 const版本返回对const string的引用 这个引用事实上绑定在了某个初试的非常量实参上
 因此我们可以将其再转换回一个普通的string&
 
+string read();
+void print(const string &);
+void print(double);
+void fooBar(int ival);
+{
+	bool read = false; 新作用域 隐藏了外部的read
+	string s = read(); 错误 read是一个bool值而非函数
+	void print(int);   新作用域 隐藏了之前的print
+	print("Value: ");  错误print(const string &) 被隐藏掉了
+	print(ival);       正确
+	print(3.14);       正确 调用print(int) print(double) 被隐藏掉了
+}
+
+名字查找发生在类型检查之前
+
+
+void print(const string &);
+void print(double);
+void print(int);
+void fooBar(int ival)
+{
+	print("Value: ");  调用print(const string &)
+	print(ival);       调用print(int)
+	print(3.14);       调用print(double)
+}
+
+1.默认实参
+typedef string::size_type sz;
+string screen(sz ht = 24, sz wid = 80, char backgrnd = ' ');
+一旦某个形参被赋予了默认值 它后面的所有形参都必须有默认值
+设计时  尽量不让默认形参出现在前面
+
+在给定作用域中 一个形参只能被赋予一次默认实参
+string screen(sz, sz, char = ' ');
+string screen(sz, sz, char = '*');     错误 重复声明
+string screen(sz = 24, sz = 80, char); 正确 添加默认实参
+
+局部变量不能作为默认实参
+
+
+内联函数和constexpr函数
+内联函数可避免函数调用的开销 在调用点内联的展开
+inline const string & shorterString(const string &s1, const string &s2)
+{
+	return s1.size() <= s2.size() ? s1 : s2;
+}
+
+constexpr int new_sz();
+constexpr int foo = new_sz();
+
+constexpr size_t scale(size_t cnt)
+{
+	return new_sz() * cnt;
+}
+
+int arr[scale(2)];  scale(2) 是常量表达式
+int i = 2;
+int a2[scale(i)]; 错误 scale(i) 不是常量表达式
+
+constexpr 函数不一定返回常量表达式
+
+把内联函数和constexpr函数放在头文件
+
+
+if (word.size() < threshold)
+{
+	cerr << "Error: " << __FILE__
+	     << ": in function " << __func__
+	     << "at line " << __LINE__ << endl;
+	     << "Compiled on " << __DATE__
+	     << "at " << __TIME__ 
+	     << "word read was " << word
+	     << ": Length too short " << endl; 
+}
+
+void f();
+void f(int);
+void f(int, int);
+void f(double, double = 3.14);
+f(5.6); 调用void f(double, double);
+
+对于调用(42, 2.56) 存在二义性
+因为重载函数时应尽量避免强制类型转换
+
+void ff(int);
+void ff(short);
+ff('a');   char提升为int 调用ff(int)
+
+void manip(long);
+void manip(float);
+manip(3.14);  二义性
+
+
+函数指针
+bool lengthCompare(const string &, const string &);
+bool (*pf)(const string &, const string &);
+
+bool *pf(const string &, const string &);
+声明一个名为pf的函数 该函数的返回值是bool*
+
+pf = lengthCompare;
+pf = &lengthCompare;
+
+bool b1 = pf("hello", "goodbye");
+bool b2 = (*pf)("hello", "goodbye");
+bool b3 = lengthCompare("hello", "goodbye");
+三个等价调用
+
+
+void ff(int*);
+void ff(unsigned int);
+void (*pf1)(unsigned int) = ff;  pf1 调用ff(unsigned)
+
+void (*pf2)(int) = ff; 错误 没有任何一个ff与该形参列表匹配
+double (*pf3)(int*) = ff; 错误 ff与pf3返回类型不匹配
+
+void useBigger(const string &s1, const string &s2, bool pf(const string &, const string &));
+useBigger(s1, s2, lengthCompare);
+
+typedef bool Func(const string&, const string &);
+typedef decltype(lengthCompare) Func2;     Func 和 Func2是函数类型
+
+typedef bool (*FuncP)(const string&, const string &);
+typedef decltype(lengthCompare) *FuncP2;   FuncP 和 FuncP2是指向函数的指针
+
+useBigger的等价声明
+void useBigger(const string&, const string&, Func);
+void useBigger(const string&, const string&, FuncP2);
+
+返回指向函数的指针
+using F = int(int*, int);  F 是函数类型
+using PF = int(*)(int*, int); PF是指针类型
+
+PF f1(int);  f1返回函数的指针
+F f1(int);   错误 F是函数类型 f1不能返回一个函数
+F *f1(int);  正确 显式的指向返回类型是指向函数的指针
+
+int (*f1(int))(int*, int);
+
+auto f1(int) -> int(*)(int*, int);
+
+string::size_type sumLength(const string&, const string&);
+string::size_type largerLength(const string&, const string&);
+decltype(sumLength) *getFcn(const string&);
+根据形参的取值 getFcn函数返回指向 sumLength或者largerLength 的指针
+
+
+######### 第七章 类 #########
