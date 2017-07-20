@@ -689,7 +689,7 @@ sizeof data;             //data的类型大小，即sizeof(Sales_data);
 sizeof p;                //指针所占空间的大小
 sizeof *p;               //p所指类型的空间大小，即sizeof(Sales_data);
 sizeof data.revenue;     //Sales_data的revenue成员对应类型的大小
-sizeof Sale_data::revenue; //另一种获取revenue大小的方式
+sizeof Sales_data::revenue; //另一种获取revenue大小的方式
 
 sizeof(ia) / sizeof(*ia);   //返回ia的元素数量
 constexpr size_t sz = sizeof(ia) / sizeof(*ia);
@@ -1132,4 +1132,91 @@ string &shorterString(string &s1, string &s2)
 然后调用shorterString的const版本
 const版本返回对const string的引用 这个引用事实上绑定在了某个初试的非常量实参上
 因此我们可以将其再转换回一个普通的string&
+
+
+
+struct Sales_data
+{
+	std::string isbn() const { return bookNo; }
+	Sales_data& combine(const Sales_data&);
+	double avg_price() const;
+
+	std::string bookNo;
+	unsigned units_sold = 0;
+	double revenue = 0.0;
+}
+非成员接口函数
+Sales_data add(const Sales_data&, const Sales_data&);
+std::ostream &print(std::ostream&, const Sales_data&);
+std::istream &read(std::istream&, Sales_data&);
+定义在类内部的函数是隐式的inline函数
+
+
+我们不能显式的定义自己的this指针
+因为this是指向常量的指针 所以常量成员函数不能改变它的对象的内容
+在上例中isbn可以读取调用它的对象的数据成员 但是不能写入新值
+
+double Sales_data::avg_price() const
+{
+	if (units_sold)
+		return revenue / units_sold;
+	else
+		return 0;
+}
+
+Sales_data& Sales_data::combine(const Sales_data &rhs)
+{
+	units_sold += rhs.units_sold;
+	revenue += rhs.revenue;
+	return *this;   //返回total的引用
+}
+total.combine(trans);
+
+istream &read(istream &is, Sales_data &item)
+{
+	double price = 0;
+	is >> item.bookNo >> item.units_sold >> price;
+	item.revenue = price * item.units_sold;
+	return is;
+}
+ostream &print(ostream &os, const Sales_data &item)
+{
+	os << item.isbn() << " " << item.units_sold << " "
+	   << item.revenue << " " << item.avg_price();
+
+	return os;
+}
+
+Sales_data add(const Sales_data &lhs, const Sales_data &rhs)
+{
+	Sales_data sum = lhs;  //lhs的数据成员拷贝给sum
+	sum.combine(rhs);
+	return sum;
+}
+
+构造函数
+构造函数和类型相同 和其他函数不一样的是 构造函数没有返回类型
+构造函数不能被声明为const
+
+只有当类没有声明任何构造函数时，编译器才会自动地生成默认构造函数
+
+struct Sales_data
+{
+	Sales_data() = default;   //合成默认构造函数
+	Sales_data(const std::string &s) : bookNo(s){ }   //构造函数初始值列表
+	Sales_data(const std::string &s, unsigned n, double p):bookNo(s), units_sold(n), revenue(p * n){ }
+	Sales_data(std::istream &);
+
+	std::string isbn() const { return bookNo; }
+	Sales_data& combine(const Sales_data&);
+	double avg_price const;
+	std::string bookNo;
+	unsigned units_sold = 0;
+	double revenue = 0.0;
+}
+
+Sales_data::Sales_data(std::istream &is)
+{
+	read(is, *this);
+}
 
