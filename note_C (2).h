@@ -689,7 +689,7 @@ sizeof data;             //data的类型大小，即sizeof(Sales_data);
 sizeof p;                //指针所占空间的大小
 sizeof *p;               //p所指类型的空间大小，即sizeof(Sales_data);
 sizeof data.revenue;     //Sales_data的revenue成员对应类型的大小
-sizeof Sale_data::revenue; //另一种获取revenue大小的方式
+sizeof Sales_data::revenue; //另一种获取revenue大小的方式
 
 sizeof(ia) / sizeof(*ia);   //返回ia的元素数量
 constexpr size_t sz = sizeof(ia) / sizeof(*ia);
@@ -1287,10 +1287,10 @@ decltype(sumLength) *getFcn(const string&);
 
 
 
-Sale_data total;
+Sales_data total;
 if (read(cin, total))  //读入第一笔交易
 {
-	Sale_data trans;
+	Sales_data trans;
 	while (read(cin, trans))    //读入剩余交易
 	{
 		if (total.isbn() == trans.isbn())
@@ -1395,3 +1395,166 @@ Sales_data::Sales_data(std::istream &is)
 {
 	read(is, *this);
 }
+
+定义在public说明符之后的成员在整个程序内可被访问 public成员定义类的接口
+
+定义在private说明符之后的成员可以被类的成员函数访问，但是不能被使用该类的代码访问
+private部分封装了类的实现细节
+
+class Sales_data
+{
+public:
+	Sales_data() = default;   //合成默认构造函数
+	Sales_data(const std::string &s) : bookNo(s){ }   //构造函数初始值列表
+	Sales_data(const std::string &s, unsigned n, double p):bookNo(s), units_sold(n), revenue(p * n){ }
+	Sales_data(std::istream &);
+	std::string isbn() const { return bookNo; }
+	Sales_data& combine(const Sales_data&);
+private:
+	double avg_price const{ return units_sold ? revenue / units_sold : 0; }
+	std::string bookNo;
+	unsigned units_sold = 0;
+	double revenue = 0.0;
+};
+
+类可以在它的第一个访问说明符之前定义成员 如果我们用struct 这些成员是public的
+如果用class 这些成员是private的
+
+友元
+class Sales_data
+{
+	friend Sales_data add(const Sales_data&, const Sales_data&);
+	friend std::istream &read(std::istream&, Sales_data&);
+	friend std::ostream &print(std::ostream&, const Sales_data&);
+
+public:
+	Sales_data() = default;   //合成默认构造函数
+	Sales_data(const std::string &s) : bookNo(s){ }   //构造函数初始值列表
+	Sales_data(const std::string &s, unsigned n, double p):bookNo(s), units_sold(n), revenue(p * n){ }
+	Sales_data(std::istream &);
+	std::string isbn() const { return bookNo; }
+	Sales_data& combine(const Sales_data&);
+private:
+	double avg_price const{ return units_sold ? revenue / units_sold : 0; }
+	std::string bookNo;
+	unsigned units_sold = 0;
+	double revenue = 0.0;
+};
+
+友元声明 只出现在类定义的内部 友元不是类的成员 也不受它所在区域访问控制级别的约束
+
+class Screen
+{
+public:
+	typedef std::string::size_type pos; // using pos = std::string::size_type;
+	Screen() = default;
+	Screen(pos ht, pos wd, char c) : height(ht), width(wd), contents(ht * wd, c) {}
+	//cursor成员隐式的使用了类内初始值 如果类内不存在cursor的类内初始值 我们就需要显示初始化
+	char get() const { return contents[cursor]; }    //读取光标字符 隐式内联
+	//定义在类内部的成员函数是自动inline的
+	inline char get(pos ht, pos wd) const;     //显式内联
+	Screen &move(pos r, pos c);
+private:
+	pos cursor = 0;
+	pos height = 0, width = 0;
+	std::string contents;
+};
+
+inline Screen &Screen::move(pos r, pos c)   //在函数定义处制定inline
+{
+	pos row = r * width;
+	cursor = row + c;
+	return *this;
+}
+
+char Screen::get(pos r, pos c) const   //在类的内部声明成inline
+{
+	pos row = r * width;
+	return contents[row + c];
+}
+
+Screen myScreen;
+char ch = myScreen.get();  //调用Screen::get()
+ch = myScreen.get(0, 0);   //调用Screen::get(pos, pos)
+
+class Screen
+{
+public:
+	void some_member() const;
+private:
+	mutable size_t access_ctr;   //即使在一个const对象也能被修改
+};
+
+void some_member() const
+{
+	++access_ctr;
+}
+
+class Window_mrg
+{
+private:
+	std::vector<Screen> screens{Screen(24, 80, ' ')};
+	//我们使用单独的元素值对vector成员执行了列表初始化
+};
+当我们提供一个类内初始值时，必须以符号= 或者花括号表示
+
+class Screen
+{
+public:
+	Screen &set(char);
+	Screen &set(pos, pos, char);
+};
+
+inline Screen &Screen::set(char c)
+{
+	contents[cursor] = c;  //设置当前光标所在位置的新值
+	return *this;  //this作为左值返回
+}
+
+inline Screen &Screen::set(pos r, pos col, char ch)
+{
+	contents[r * width + col] = ch;
+	return *this;
+}
+
+Sales_data item1;
+class Sales_data item1; //等价声明
+
+
+myScreen.move(4, 0).set('#'); 在同一对象上执行
+如果 move 返回Screen而非 Screen&
+
+Screen temp = myScreen.move(4, 0);  //对返回值进行拷贝
+temp.set("#"); 不会改变myScreen的costents
+
+一个const成员函数 如果以引用的形式返回*this 那么它的返回类型将是常量引用
+
+class Screen
+{
+public:
+	Screen &display(std::ostream &os)
+	{
+		do_display(os); 
+		return *this;
+	}
+	const Screen &display(std::ostream &os) const
+	{
+		do_display(os);
+		return *this;
+	}
+private:
+	void do_display(std::ostream &os) const { os << contents; }	
+};
+
+Screen myScreen(5, 3);
+const Screen blank(5, 3);
+myScreen.set('#').display(cout); //调用非常量版本
+blank.display(cout);   //调用常量版本
+
+
+class Link_screen
+{
+	Screen window;
+	Link_screen *next;
+	Link_screen *prev;
+};
