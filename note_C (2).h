@@ -840,6 +840,9 @@ stdexcept.h 定义了几种常用的异常类
 new头文件定义了bad_malloc异常类型
 type_info定义了bad_cast异常类型
 
+
+
+
 ####### 第六章 函数 #######
 
 int fact(int val)
@@ -1133,6 +1136,182 @@ string &shorterString(string &s1, string &s2)
 const版本返回对const string的引用 这个引用事实上绑定在了某个初试的非常量实参上
 因此我们可以将其再转换回一个普通的string&
 
+<<<<<<< HEAD
+=======
+string read();
+void print(const string &);
+void print(double);
+void fooBar(int ival);
+{
+	bool read = false; 新作用域 隐藏了外部的read
+	string s = read(); 错误 read是一个bool值而非函数
+	void print(int);   新作用域 隐藏了之前的print
+	print("Value: ");  错误print(const string &) 被隐藏掉了
+	print(ival);       正确
+	print(3.14);       正确 调用print(int) print(double) 被隐藏掉了
+}
+
+名字查找发生在类型检查之前
+
+
+void print(const string &);
+void print(double);
+void print(int);
+void fooBar(int ival)
+{
+	print("Value: ");  调用print(const string &)
+	print(ival);       调用print(int)
+	print(3.14);       调用print(double)
+}
+
+1.默认实参
+typedef string::size_type sz;
+string screen(sz ht = 24, sz wid = 80, char backgrnd = ' ');
+一旦某个形参被赋予了默认值 它后面的所有形参都必须有默认值
+设计时  尽量不让默认形参出现在前面
+
+在给定作用域中 一个形参只能被赋予一次默认实参
+string screen(sz, sz, char = ' ');
+string screen(sz, sz, char = '*');     错误 重复声明
+string screen(sz = 24, sz = 80, char); 正确 添加默认实参
+
+局部变量不能作为默认实参
+
+
+内联函数和constexpr函数
+内联函数可避免函数调用的开销 在调用点内联的展开
+inline const string & shorterString(const string &s1, const string &s2)
+{
+	return s1.size() <= s2.size() ? s1 : s2;
+}
+
+constexpr int new_sz();
+constexpr int foo = new_sz();
+
+constexpr size_t scale(size_t cnt)
+{
+	return new_sz() * cnt;
+}
+
+int arr[scale(2)];  scale(2) 是常量表达式
+int i = 2;
+int a2[scale(i)]; 错误 scale(i) 不是常量表达式
+
+constexpr 函数不一定返回常量表达式
+
+把内联函数和constexpr函数放在头文件
+
+
+if (word.size() < threshold)
+{
+	cerr << "Error: " << __FILE__
+	     << ": in function " << __func__
+	     << "at line " << __LINE__ << endl;
+	     << "Compiled on " << __DATE__
+	     << "at " << __TIME__ 
+	     << "word read was " << word
+	     << ": Length too short " << endl; 
+}
+
+void f();
+void f(int);
+void f(int, int);
+void f(double, double = 3.14);
+f(5.6); 调用void f(double, double);
+
+对于调用(42, 2.56) 存在二义性
+因为重载函数时应尽量避免强制类型转换
+
+void ff(int);
+void ff(short);
+ff('a');   char提升为int 调用ff(int)
+
+void manip(long);
+void manip(float);
+manip(3.14);  二义性
+
+
+函数指针
+bool lengthCompare(const string &, const string &);
+bool (*pf)(const string &, const string &);
+
+bool *pf(const string &, const string &);
+声明一个名为pf的函数 该函数的返回值是bool*
+
+pf = lengthCompare;
+pf = &lengthCompare;
+
+bool b1 = pf("hello", "goodbye");
+bool b2 = (*pf)("hello", "goodbye");
+bool b3 = lengthCompare("hello", "goodbye");
+三个等价调用
+
+
+void ff(int*);
+void ff(unsigned int);
+void (*pf1)(unsigned int) = ff;  pf1 调用ff(unsigned)
+
+void (*pf2)(int) = ff; 错误 没有任何一个ff与该形参列表匹配
+double (*pf3)(int*) = ff; 错误 ff与pf3返回类型不匹配
+
+void useBigger(const string &s1, const string &s2, bool pf(const string &, const string &));
+useBigger(s1, s2, lengthCompare);
+
+typedef bool Func(const string&, const string &);
+typedef decltype(lengthCompare) Func2;     Func 和 Func2是函数类型
+
+typedef bool (*FuncP)(const string&, const string &);
+typedef decltype(lengthCompare) *FuncP2;   FuncP 和 FuncP2是指向函数的指针
+
+useBigger的等价声明
+void useBigger(const string&, const string&, Func);
+void useBigger(const string&, const string&, FuncP2);
+
+返回指向函数的指针
+using F = int(int*, int);  F 是函数类型
+using PF = int(*)(int*, int); PF是指针类型
+
+PF f1(int);  f1返回函数的指针
+F f1(int);   错误 F是函数类型 f1不能返回一个函数
+F *f1(int);  正确 显式的指向返回类型是指向函数的指针
+
+int (*f1(int))(int*, int);
+
+auto f1(int) -> int(*)(int*, int);
+
+string::size_type sumLength(const string&, const string&);
+string::size_type largerLength(const string&, const string&);
+decltype(sumLength) *getFcn(const string&);
+根据形参的取值 getFcn函数返回指向 sumLength或者largerLength 的指针
+
+
+######### 第七章 类 #########
+
+
+
+Sales_data total;
+if (read(cin, total))  //读入第一笔交易
+{
+	Sales_data trans;
+	while (read(cin, trans))    //读入剩余交易
+	{
+		if (total.isbn() == trans.isbn())
+		{
+			total.combine(trans);
+		}
+		else
+		{
+			print(cout, total) << endl;
+			total = trans;   //处理下一本书
+		}
+	}
+	print(cout, total) << endl;  //输出最后一条交易
+}
+else
+{
+	cerr << "No data?!" << endl;
+}
+>>>>>>> 0232c5d82aba99156be67bc0d16106a92e83f393
 
 
 struct Sales_data
@@ -1220,3 +1399,168 @@ Sales_data::Sales_data(std::istream &is)
 	read(is, *this);
 }
 
+<<<<<<< HEAD
+=======
+定义在public说明符之后的成员在整个程序内可被访问 public成员定义类的接口
+
+定义在private说明符之后的成员可以被类的成员函数访问，但是不能被使用该类的代码访问
+private部分封装了类的实现细节
+
+class Sales_data
+{
+public:
+	Sales_data() = default;   //合成默认构造函数
+	Sales_data(const std::string &s) : bookNo(s){ }   //构造函数初始值列表
+	Sales_data(const std::string &s, unsigned n, double p):bookNo(s), units_sold(n), revenue(p * n){ }
+	Sales_data(std::istream &);
+	std::string isbn() const { return bookNo; }
+	Sales_data& combine(const Sales_data&);
+private:
+	double avg_price const{ return units_sold ? revenue / units_sold : 0; }
+	std::string bookNo;
+	unsigned units_sold = 0;
+	double revenue = 0.0;
+};
+
+类可以在它的第一个访问说明符之前定义成员 如果我们用struct 这些成员是public的
+如果用class 这些成员是private的
+
+友元
+class Sales_data
+{
+	friend Sales_data add(const Sales_data&, const Sales_data&);
+	friend std::istream &read(std::istream&, Sales_data&);
+	friend std::ostream &print(std::ostream&, const Sales_data&);
+
+public:
+	Sales_data() = default;   //合成默认构造函数
+	Sales_data(const std::string &s) : bookNo(s){ }   //构造函数初始值列表
+	Sales_data(const std::string &s, unsigned n, double p):bookNo(s), units_sold(n), revenue(p * n){ }
+	Sales_data(std::istream &);
+	std::string isbn() const { return bookNo; }
+	Sales_data& combine(const Sales_data&);
+private:
+	double avg_price const{ return units_sold ? revenue / units_sold : 0; }
+	std::string bookNo;
+	unsigned units_sold = 0;
+	double revenue = 0.0;
+};
+
+友元声明 只出现在类定义的内部 友元不是类的成员 也不受它所在区域访问控制级别的约束
+
+class Screen
+{
+public:
+	typedef std::string::size_type pos; // using pos = std::string::size_type;
+	Screen() = default;
+	Screen(pos ht, pos wd, char c) : height(ht), width(wd), contents(ht * wd, c) {}
+	//cursor成员隐式的使用了类内初始值 如果类内不存在cursor的类内初始值 我们就需要显示初始化
+	char get() const { return contents[cursor]; }    //读取光标字符 隐式内联
+	//定义在类内部的成员函数是自动inline的
+	inline char get(pos ht, pos wd) const;     //显式内联
+	Screen &move(pos r, pos c);
+private:
+	pos cursor = 0;
+	pos height = 0, width = 0;
+	std::string contents;
+};
+
+inline Screen &Screen::move(pos r, pos c)   //在函数定义处制定inline
+{
+	pos row = r * width;
+	cursor = row + c;
+	return *this;
+}
+
+char Screen::get(pos r, pos c) const   //在类的内部声明成inline
+{
+	pos row = r * width;
+	return contents[row + c];
+}
+
+Screen myScreen;
+char ch = myScreen.get();  //调用Screen::get()
+ch = myScreen.get(0, 0);   //调用Screen::get(pos, pos)
+
+class Screen
+{
+public:
+	void some_member() const;
+private:
+	mutable size_t access_ctr;   //即使在一个const对象也能被修改
+};
+
+void some_member() const
+{
+	++access_ctr;
+}
+
+class Window_mrg
+{
+private:
+	std::vector<Screen> screens{Screen(24, 80, ' ')};
+	//我们使用单独的元素值对vector成员执行了列表初始化
+};
+当我们提供一个类内初始值时，必须以符号= 或者花括号表示
+
+class Screen
+{
+public:
+	Screen &set(char);
+	Screen &set(pos, pos, char);
+};
+
+inline Screen &Screen::set(char c)
+{
+	contents[cursor] = c;  //设置当前光标所在位置的新值
+	return *this;  //this作为左值返回
+}
+
+inline Screen &Screen::set(pos r, pos col, char ch)
+{
+	contents[r * width + col] = ch;
+	return *this;
+}
+
+Sales_data item1;
+class Sales_data item1; //等价声明
+
+
+myScreen.move(4, 0).set('#'); 在同一对象上执行
+如果 move 返回Screen而非 Screen&
+
+Screen temp = myScreen.move(4, 0);  //对返回值进行拷贝
+temp.set("#"); 不会改变myScreen的costents
+
+一个const成员函数 如果以引用的形式返回*this 那么它的返回类型将是常量引用
+
+class Screen
+{
+public:
+	Screen &display(std::ostream &os)
+	{
+		do_display(os); 
+		return *this;
+	}
+	const Screen &display(std::ostream &os) const
+	{
+		do_display(os);
+		return *this;
+	}
+private:
+	void do_display(std::ostream &os) const { os << contents; }	
+};
+
+Screen myScreen(5, 3);
+const Screen blank(5, 3);
+myScreen.set('#').display(cout); //调用非常量版本
+blank.display(cout);   //调用常量版本
+
+
+class Link_screen
+{
+	Screen window;
+	Link_screen *next;
+	Link_screen *prev;
+};
+>>>>>>> 0232c5d82aba99156be67bc0d16106a92e83f393
