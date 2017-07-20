@@ -1495,7 +1495,7 @@ void some_member() const
 	++access_ctr;
 }
 
-class Window_mrg
+class Window_mgr
 {
 private:
 	std::vector<Screen> screens{Screen(24, 80, ' ')};
@@ -1563,4 +1563,82 @@ class Link_screen
 	Link_screen *next;
 	Link_screen *prev;
 };
->>>>>>> 0232c5d82aba99156be67bc0d16106a92e83f393
+
+
+class Screen
+{
+	friend class Window_mgr;
+};
+
+class Window_mgr
+{
+public:
+	using ScreenIndex = std::vector<Screen>::size_type;
+	void clear(ScreenIndex);
+private:
+	std::vector<Screen> screens{Screen(24, 80, ' ')};
+};
+
+
+void Window_mgr::clear(ScreenIndex i)
+{
+	Screen &s = screens[i];
+	s.contents = string(s.height * s.width, ' ');
+}
+当Screen将 Window_mgr 指定为其友元之后Screen 的所有成员对于Window_mgr就变成可见的了
+友元不具有传递性
+
+class Screen
+{
+	friend void Window_mgr::clear(ScreenIndex);
+};
+某个成员函数作为友元
+方法：
+首先定义Window_mgr类，其中声明clear函数 但是不能定义它
+在clear使用Screen的成员之前必须先声明Screen
+
+接下来定义Screen 包括对于clear的友元声明
+最后定义clear 此时才可以使用Screen的成员
+
+extern std::ostream& storeOn(std::ostream &, Screen &);
+extern BitMap& StoreOn(BitMap &, Screen &);
+class Screen
+{
+	friend std::ostream& storeOn(std::ostream &, Screen &);
+};
+接受BitMap&作为参数版本仍然不能访问Screen
+
+struct X
+{
+	friend void f() {}
+	X() { f(); }     //错误 f还没有被声明
+	void g();
+	void h();
+}
+
+void X::g() { return f(); }   //错误 f还没有没声明
+void f();					  //声明那个定义在X中的函数
+void X::h() { return f(); }   //正确：现在f的声明在作用域中
+
+友元声明的作用是影响访问权限 它本身并非普通意义上的声明
+
+Screen::pos ht = 24, wd = 80;  使用Screen定义的pos类型
+Screen scr(ht, wd, ' ');
+Screen *p = &scr;
+char c = scr.get();     访问scr对象的get成员
+c = p->get();           访问p所指对象的get成员
+
+一个类就是一个作用域
+
+class Window_mgr
+{
+public:
+	ScreenIndex addScreen(const Screen&);
+};
+
+Window_mgr::ScreenIndex Window_mgr::addScreen(const Screen &s)
+{
+	screen.push_back(s);
+	return screens.size() - 1;
+}
+返回类型需要指明哪个类定义了它
