@@ -1642,3 +1642,22 @@ Window_mgr::ScreenIndex Window_mgr::addScreen(const Screen &s)
 	return screens.size() - 1;
 }
 返回类型需要指明哪个类定义了它
+
+类的定义分两步处理
+首先，编译成员的声明
+直到类全部可见后才编译函数体
+这种两阶段的处理方式 只适用于成员函数中使用的名字
+
+typedef double Money;
+string bal;
+class Account
+{
+public:
+	Money balance() { return bal; }  //返回bal成员 而非外层的string
+private:
+	Money bal;
+}
+
+看到balance声明时 将在Account类范围内寻找对Money的声明
+没有匹配到会在Account的外层作用域中查找
+
