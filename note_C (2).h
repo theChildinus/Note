@@ -1661,3 +1661,90 @@ private:
 看到balance声明时 将在Account类范围内寻找对Money的声明
 没有匹配到会在Account的外层作用域中查找
 
+
+不要把成员名字作为参数或者其他局部变量使用
+
+int height;
+class Screen
+{
+public:
+	typedef std::string::size_type pos;
+	void setHeight(pos);
+	pos height = 0;
+};
+Screen::pos verify(Screen::pos);
+void Screen::setHeight(pos var)
+{
+	height = verify(var);
+}
+全局函数verify的声明在Screen类的定义之前是不可见的
+名字查找的第三部包括了成员函数出现之前的全局作用域
+在此例中 verify的声明位于setHeight的定义之前 因此可以被正常使用
+
+class ConstRef
+{
+public:
+	ConstRef(int ii);
+private:
+	int i;
+	const int ci;
+	int &ri;
+};
+成员ci和ri都必须初始化
+
+ConstRef::ConstRef(int ii)
+{//赋值
+	i = ii;    正确
+	ci = ii;   错误不能给const赋值
+	ri = i;    错误ri没有初始化
+}
+随着构造函数体一开始执行 初始化就完成了
+正确形式：
+ConstRef::ConstRef(int ii): i(ii), ci(ii), ri(i) { }
+如果成员是const 引用或者属于某种未提供默认构造函数的类类型
+我们必须通过构造函数初始值列表为这些成员提供初值
+
+初始化和赋值 事关效率问题
+前者直接初始化数据成员  后者先初始化再赋值
+
+成员的初始化顺序与他们在类定义的出现顺序一致
+
+class Sales_data
+{
+public:
+	Sales_data(std::string s = ""): bookNo(s) { }
+	//定义默认构造函数 令其与只接受一个string实参的构造函数功能相同
+	Sales_data(std::string s, unsigned cnt, double rev):
+		bookNo(s), units_sold(cnt), revenue(rev) { }
+	Sales_data(std::istream &is) { read(is, *this); }
+};
+
+当没有给定实参或者给定一个string实参时 两个版本的类创建了相同的对象
+因为我们不提供实参也能调用上述的构造函数 所以该构造函数实际上为我们的类提供了默认构造函数
+
+委托构造函数
+class Sales_data
+{
+public:
+	Sales_data(std::string s, unsigned cnt, double price): bookNo(s), units_sold(cnt), revenue(cnt * price) { }
+	//非委托构造函数使用对应的实参初始化成员
+	Sales_data(): Sales_data("", 0, 0) { }
+	//其余构造函数全部委托给另一个构造函数
+	Sales_data(std::string s): Sales_data(s, 0, 0) { }
+	Sales_data(std::istream &is): Sales_data() { read(is, *this); }
+}; 
+
+
+隐式的类类型转换
+string null_book = "9-999-99999-9";
+构建一个临时的Sales_data对象
+该对象的units_sold revenue = 0, bookNo = null_book
+item.combine(null_book);
+
+编译器只允许一步类类型转换
+item.combine("9-999-99999-9"); 错误
+item.combine(string("9-999-99999-9")); 显示转换成string 隐式转换成 Sales_data
+item.combine(Sales_data("9-999-99999-9")); 隐式转换成string 显示转换成 Sales_data
+
+item.combine(cin); cin转换成 Sales_data 执行了一个接受 istream对象的 Sales_data 构造函数
+
