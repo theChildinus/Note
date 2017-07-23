@@ -1748,3 +1748,76 @@ item.combine(Sales_data("9-999-99999-9")); 隐式转换成string 显示转换成
 
 item.combine(cin); cin转换成 Sales_data 执行了一个接受 istream对象的 Sales_data 构造函数
 
+抑制构造函数定义的隐式转换
+class Sales_data
+{
+	Sales_data() = default;
+	Sales_data(const std::string &s, unsigned n, double p): bookNo(s), units_sold(n), revenue(p*n) { }
+	explicit Sales_data(const std::string &s): bookNo(s) { }
+	explicit Sales_data(std::istream &);
+};   //explicit 只在类内声明构造函数时使用 在类外部定义不能重复
+
+item.combine(null_book);
+item.combine(cin);
+两个调用都将错误
+
+explicit 构造函数只能用于直接初始化
+Sales_data item1(null_book);   正确 直接初始化
+Sales_data item2 = null_book;  错误 不能将explicit 构造函数用于拷贝形式的初始化过程
+
+item.combine(Sales_data(null_book));  正确 实参是一个显式构造的 Sales_data对象
+item.combine(static_cast<Sales_data>(cin)); 正确 static_cast 可以使用explicit 的构造函数
+
+聚合类
+满足条件：
+所有成员都是public
+没有定义任何构造函数
+没有类内初始值
+没有基类 也没有virtual函数
+struct Data
+{
+	int ival;
+	string s;
+};
+
+Data val1 = { 0, "anna" };
+初始化顺序要和声明的顺序一致
+
+字面值常量类
+数据成员都必须是字面值类型
+类必须至少含有一个constexpr构造函数
+如果一个数据成员含有类内初始值，则内置类型成员的初始值必须是一条常量表达式
+	如果成员属于某种类类型 则初始值必须使用成员自己的constexpr构造函数
+类必须使用析构函数的默认定义 该成员负责销毁对象
+
+class Debug
+{
+public:
+	constexpr Debug(bool b = true): hw(b), io(b), other(b) { }
+	constexpr Debug(bool h, bool i, bool o): hw(h), io(i), other(o) { }
+	constexpr bool any() { return hw || io || other; }
+	void set_io(bool b) { io = b; }
+	void set_hw(bool b) { hw = b; }
+	void set_other(bool b) { other = b; }
+private:
+	bool hw;
+	bool io;
+	bool other;
+};
+constexpr构造函数必须初始化所有数据成员 初始值或者使用constexpr构造函数 或者一条常量表达式
+constexpr构造函数用于生成 constexpr对象 以及 constexpr函数的参数或者返回类型
+
+constexpr Debug io_sub(false, true, false);
+if (io_sub.any())   //等于if(ture)
+{
+	cerr << "print appropriate error messages" << endl;
+}
+constexpr Debug prod(false);
+if (prod.any())   //等于if(false)
+{
+	cerr << "print an error message" << endl;
+}
+
+
+
+
