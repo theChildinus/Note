@@ -1323,7 +1323,7 @@ struct Sales_data
 	std::string bookNo;
 	unsigned units_sold = 0;
 	double revenue = 0.0;
-}
+};
 非成员接口函数
 Sales_data add(const Sales_data&, const Sales_data&);
 std::ostream &print(std::ostream&, const Sales_data&);
@@ -1392,7 +1392,7 @@ struct Sales_data
 	std::string bookNo;
 	unsigned units_sold = 0;
 	double revenue = 0.0;
-}
+};
 
 Sales_data::Sales_data(std::istream &is)
 {
@@ -1614,7 +1614,7 @@ struct X
 	X() { f(); }     //错误 f还没有被声明
 	void g();
 	void h();
-}
+};
 
 void X::g() { return f(); }   //错误 f还没有没声明
 void f();					  //声明那个定义在X中的函数
@@ -1656,7 +1656,7 @@ public:
 	Money balance() { return bal; }  //返回bal成员 而非外层的string
 private:
 	Money bal;
-}
+};
 
 看到balance声明时 将在Account类范围内寻找对Money的声明
 没有匹配到会在Account的外层作用域中查找
@@ -1817,6 +1817,266 @@ if (prod.any())   //等于if(false)
 {
 	cerr << "print an error message" << endl;
 }
+
+声明静态成员
+class Account
+{
+public:
+	void calculate() { amount += amount * interestRate; }
+	static double rate() { return interestRate; }
+	static void rate(double);
+private:
+	std::string owner;
+	double amount;
+	static double interestRate;
+	static double initRate();
+};
+类的静态成员 存在任何对象之外 对象中的不包含任何与静态数据成员有关的数据
+因此每个Account对象将包含两个数据成员 owner和amount 只存在一个interestRate且被所有Account对象共享
+
+静态成员函数不与任何对象绑定在一起  不包含 this指针
+
+double r;
+r = Account::rate();  使用作用域运算符访问静态成员
+
+Account ac1;
+Account *ac2 = &ac1;
+r = ac1.rate();
+r = ac2->rate();
+
+类外部定义静态成员时 不能重复static关键字 该关键字只出现在类内部的声明语句
+void Account::rate(double newRate)
+{
+	interestRate = newRate;
+}
+
+静态数据成员不是由类的构造函数初始化的 必须在类的外部定义和初始化每个静态成员
+和其他对象一样 一个静态数据成员只能定义一次
+
+定义并初始化一个静态成员
+double Account::interestRate = initRate();
+
+静态成员的类内初始化
+
+class Account
+{
+public:
+	static double rate() { return interestRate; }
+	static void rate(double);
+private:
+	static constexpr int period = 30; //要求静态成员必须是字面值常量类型的constexpr
+	double daily_tbl[period];
+};
+如果在类的内部提供了一个初始值 则成员的定义 不能再指定一个初始值了
+
+constexpr int Account::period;  不带初始值的 静态成员的定义 初始值在内部提供
+即使一个常量静态数据成员在类内部被初始化了 通常情况下也应该在类的外部定义一下该成员
+
+class Bar
+{
+public:
+	//...
+private:
+	static Bar mem1;  正确 静态成员可以是不完全类型
+	Bar *mem2;        正确 指针成员可以是不完全类型
+	Bar mem3;         错误 数据成员必须是完全类型
+};
+
+class Screen
+{
+public:
+	Screen& clear(char bkground);
+private:
+	static const char bkground;
+};
+静态成员可以作为默认实参 非静态数据成员不能作为默认实参
+
+######## 第八章 IO库 #########
+
+iostream  读写流的基本类型
+fstream   读写命名文件的基本类型
+sstream   读写内存string对象的基本类型
+
+IO对象无 拷贝和赋值
+ofstream out1, out2;
+out1 = out2;    错误 不能对流对象赋值
+ofstream print(ofstream);  错误 不能初始化ofstream参数
+out2 = print(out2);   错误 不能拷贝流对象
+
+确定一个流对象的状态 最简单的办法就是将它当做一个对象来使用
+while (cin >> word)
+{
+	//ok ...
+}
+
+auto old_state = cin.rdstate(); 记住cin的当前状态
+cin.clear();  使cin有效
+process_input(cin);   使用cin
+cin.setstate(old_state);  将cin设置为原有状态
+
+cin.clear(cin.rdstate() & ~cin.failbit & ~cin.badbit);
+复位failbit和badbit 保持其他标志位不变
+
+cout << "hi!" << endl;    输出hi和一个换行 然后刷新缓冲区
+cout << "hi!" << flush;   输出hi 然后刷新缓冲区 不附加任何额外字符
+cout << "hi!" << ends;    输出hi和一个空字符 然后刷新缓冲区
+
+cout << unitbuf;    所有输出后 都会立即刷新缓冲区 任何输出都立即刷新 无缓冲
+cout << nounitbuf;  回到正常的缓冲方式
+
+如果程序崩溃 输出缓冲区不会被刷新
+
+当一个输入流被关联到一个输出流时，任何试图从输入流读取数据的操作都会先刷新 关联的数据流
+ostream *old_tie = cin.tie(nullptr); cin不再与其他流关联
+cin.tie(&cerr);    读取cin会刷新cerr而不是cout
+cin.tie(old_tie);  重建cin 和 cout 的正常关联
+
+
+ifstream 从一个给定文件读取数据
+ofstream 向一个给定文件写入数据
+fstream  可以读写给定文件
+
+ifstream in(ifile);  构造一个ifstream并打开给定文件
+ofstream out;        输出文件未关联到任何文件
+
+ifstream input(argv[1]);   //打开销售记录文件
+ofstream output(argv[2]);  //打开输出文件
+Sales_data total;
+if (read(input, total))
+{
+	Sales_data trans;
+	while (read(input, trans))
+	{
+		if (total.isbn() == trans.isbn())
+			total.combine(trans);
+		else
+		{
+			print(output, total) << endl;
+			total = trans;
+		}
+	}
+	print(output, total) << endl;
+}
+else
+{
+	cerr << "NO data?!" << endl;
+}
+重要的是对read 和 print的调用
+虽然两个函数定义时指定的形参分别是 istream& 和 ostream&
+但是我们可以向它们传递fstream对象
+
+ifstream in(ifile);
+in.close();
+in.open(ifile + "2");
+
+for (auto p = argv + 1; p != argv + argc; ++p)
+{
+	ifstream input(*p);   //创建输出流并打开文件
+	if (input)            //如果文件打开成功 处理此文件
+	{
+		process(input);
+	}
+	else
+	{
+		cerr << "couldn't open" + string(*p); 
+	}
+} //每个循环步input都会离开作用域 因此会被销毁
+当一个fstream对象被销毁 close会自动调用
+
+以out模式打开文件会丢弃已有数据
+ofstream out("file1");
+ofstream out2("file1", ofstream::out);
+ofstream out3("file1", ofstream::out | ofstream::trunc);
+这几句 file1 都被截断
+
+ofstream app("file2", ofstream::app);
+ofstream app2("file2", ofstream::out | ofstream::app);
+为了保留文件内容 我们必须显式指定app的模式
+
+ofstream out;    未指定文件打开模式
+out.open("scratchpad");  模式隐含设置为输出和截断
+out.close();     关闭out 以便我们将其用于其他文件
+out.open("percious", ofstream::app); 模式为输出和追加
+out.close();
+
+istringstream 从string 读取数据
+ostringstream 向string 写入数据
+stringstream 即可从string读数据也可向string写数据
+
+morgan 2015552368 8625550123
+drew 9735550130
+lee 6095550132 2015550175 8005550000
+
+struct PersonInfo
+{
+	string name;
+	vertor<string> phones;
+};
+
+string line, word;    
+vector<PersonInfo> people;
+while (getline(cin, line))
+{
+	PersonInfo info;
+	istringstream record(line); //记录绑定到刚读入的行
+	record >> info.name;        //读取名字
+	while (record >> word)      //读取电话号码
+	{
+		info.phones.push_back(word);
+	}
+	people.push_back(info);
+}
+此循环 是从一个string而不是标准输入读取数据 当string中的数据全部读出后
+同样会触发文件结束信号 在record上的下一个输入操作会失败
+
+
+for (const auto &entry : people)
+{
+	ostringstream formatted, badNums;
+	for (const auto &nums : entry.phones)
+	{
+		if (!valid(nums))
+		{
+			badNums << " " << nums;  //数的字符串形式存入badNums
+		}
+		else
+		{
+			formatted << " " << format(nums); //格式化的字符串写入 formatted
+		}
+	}
+	if (badNums.str().empty())  //没有错误的数
+	{
+		os << entry.name << " "
+			<< formatted.str() << endl;
+	}
+	else
+	{
+		cerr << "input error: " << entry.name
+				<< "invalid number(s) " << badNums.str() << endl;
+	}
+}
+
+######## 第九章 顺序容器 ########
+
+vector<vector<string>> lines;
+此处lines是一个vector 其元素类型是string 的 vector
+
+假定noDefault 是一个没有默认构造默认函数的类型
+vector<noDefault> v1(10, init);   正确 提供了元素初始化器
+vector<noDefault> v2(10);         错误 必须提供一个元素初始化器
+
+迭代器范围 [begin, end) 范围自begin开始 于end之前结束
+while (begin != end)
+{
+	*begin = val; //正确 范围非空 因此begin指向一个元素
+	++begin;      //移动迭代器 获取下一个元素
+}
+
+list<string>::iterator iter;
+iter是通过list<string>定义的一个迭代器类型
+vector<int>::difference_type count;
+count是通过vector<int> 定义的一个difference_type 类型  带符号整数 足够保存两个迭代器之间的距离
+
 
 
 
