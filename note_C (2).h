@@ -2078,6 +2078,53 @@ vector<int>::difference_type count;
 count是通过vector<int> 定义的一个difference_type 类型  带符号整数 足够保存两个迭代器之间的距离
 
 
+与const指针和引用类似 可以将一个普通的iterator转换成const_iterator 但反之不行
 
+list<string>::iterator it5 = a.begin(); 显式指定类型
+list<string>::const_iterator it6 = a.begin(); 是iterator 还是 const_iterator 取决于a的类型
+auto it7 = a.begin();  仅当a是const it7 是const_iterator
+auto it8 = a.cbegin(); it8是 const_iterator
+
+auto 与begin 和 end 结合使用的时候  获取迭代器的类型取决于容器类型
+但是以c开头的版本 还是可以获得const_iterator的 不管容器的类型是什么
+
+
+list<string> authors = {"milton", "shakespeare", "austen"}; 列表初始化 对于出array除外的容器类型初始化列表还隐含的定义了容器的大小
+vector<const char*> articles = {"a", "an", "the"};
+list<string> list2(authors);       正确
+deque<string> authlist(authors);   错误 容器类型不匹配
+vector<string> words(articles);    错误 容器类型不匹配
+forword_list<string> words(articles.begin(), articles.end());   正确 可以将const char*元素转化为string
+
+deque<string> authlist(authors.begin(), it);
+it表示authors中的一个元素 拷贝元素 直到 但不包含 it指向的元素
+
+与顺序容器大小相关的构造函数
+vector<int> ivec(10, -1);     //十个元素 每个初始化为-1
+list<string> sevc(10, "hi!"); //十个strings 每个初始化为 hi
+forword_list<int> ivec(10);   //十个元素 每个初始化为0
+deque<string> sevc(10);       //十个元素 每个初始化为空 string
+
+只有顺序容器的构造函数才接受大小参数 关联容器并不支持
+
+当定义一个array时 除了指定元素类型还要指定容器大小
+array<int, 42>;
+array<string, 10>;
+使用 array类型 也要指定元素类型和大小
+array<int, 10>::size_type i;  正确
+array<int>::size_type j; 错误 array<int> 不是一个类型
+
+array不支持普通容器的构造函数
+array<int, 10> ia1;    10个默认初始化的int
+array<int, 10> ia2 = {0,1,2,3,4,5,6,7,8,9};  列表初始化
+array<int, 10> ia3 = {42};   ia3[0] 为 42 剩余元素为0
+
+array 可以进行拷贝和对象赋值
+int digs[10] = {0,1,2,3,4,5,6,7,8,9};
+int cpy[10] = digs;             错误 内置数组不支持拷贝和赋值
+array<int, 10> digits = {0,1,2,3,4,5,6,7,8,9};
+array<int, 10> copy = digits;   正确
+
+如果两个容器原来大小不同 赋值运算后两者的大小都与右边容器的原大小相同
 
 
