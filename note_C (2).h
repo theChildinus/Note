@@ -2127,4 +2127,228 @@ array<int, 10> copy = digits;   正确
 
 如果两个容器原来大小不同 赋值运算后两者的大小都与右边容器的原大小相同
 
+array<int, 10> a1 = {0,1,2,3,4,5,6,7,8,9};
+array<int, 10> a2 = {0};  所有元素均为0
+a1 = a2;     替换a1中的元素
+a2 = {0};    错误 不能将一个花括号列表赋值给数组
+由于右边运算对象的大小 可能与左边运算对象的大小不同
+array类型不支持 assign 也不允许用花括号包围的值列表进行赋值
 
+assign的两种用法
+list<string> names;
+vector<const char*> oldstyle;
+names = oldstyle;   //错误 容器类型不匹配
+names.assign(oldstyle.cbegin(), oldstyle.cend());  //正确 将const char转化为string
+
+list<string> slistl(1);  //1个元素 为空string
+slistl.assign(10, "hiya!");  //10个元素 每个都是hiya！
+
+vector<string> sevc1(10);
+vector<string> sevc2(24);
+swap(sevc1, sevc2);
+
+除array外 swap不对任何元素进行 拷贝 删除或者插入操作 因此可以保证在常数时间内完成
+
+除string外 指向容器的迭代器 引用指在swap操作后都不会失效
+假定iter在swap之前指向sevc1[3] 的string 在swap之后它指向sevc2[3]的元素
+交换两个array所需的时间与array中元素的数目成正比
+
+forword_list 支持max_size 和 empty 但不支持size
+
+如果两个容器都不是另一个的容器的前缀子序列 则他们的比较结果取决于第一个不相等的元素的比较结果
+
+vector<int> v1 = {1,3,5,7,9,12};
+vector<int> v2 = {1,3,9};
+vector<int> v3 = {1,3,5,7};
+vector<int> v4 = {1,3,5,7,9,12};
+v1 < v2 true
+v1 < v3 false
+v1 == v4 true
+v1 == v2 false
+
+vector<Sales_data> storeA, storeB;
+if (storeA < storeB) 错误 Sales_data没有<运算符
+
+顺序容器操作
+forward_list 有自己版本的 insert 和 emplace
+forward_list 不支持push_back 和 emplace_back
+vector 和 string 不支持 push_front 和 emplace_front
+
+除array和forward_list 之外 每个顺序容器都支持push_back
+
+string word;
+while (cin >> word)
+{
+	container.push_back(word);
+}
+
+void pluralize(size_t cnt, string &word)
+{
+	if (cnt > 1)
+	{
+		word.push_back('s'); // word += 's'
+	}
+}
+
+对象初始化容器时 或者将一个对象插入到容器中时 实际上放入到容器中的是对象值的一个拷贝
+
+list<int> ilist;
+for (size_t ix = 0; ix != 4; ++ix)
+{
+	ilist.push_front(ix);
+}
+最终list为 3,2,1,0
+
+slist.insert(iter, "hello!"); 将hello！添加到iter之前的位置
+
+vector<string> svec;
+list<string> slist;
+slist.insert(slist.begin(), "hello!");  //等价于 slist.push_front("hello!");
+
+svec.insert(svec.begin(), "hello!");  //vector不支持push_front 但是我们可以插入到begin()之前 
+//插入到vector末尾之外的任何位置都可能很慢
+
+svec.insert(svec.end(), 10, "anna"); 将十个元素插入到svec的末尾 并将所有元素都初始化为 string "anna"
+
+vector<string> v = {"quasi", "simba", "frollo", "scar"};
+slist.insert(slist.begin(), v.end() - 2, v.end());  //将v的最后两个元素添加到slist的开始位置
+slist.insert(slist.end(), {"there", "word", "will", "go", "at", "the", "end"});
+slist.insert(slist.begin(), slist.begin(), slist.end()); //运行时错误 迭代器表示拷贝的范围 不能指向与目标位置相同的容器
+
+接受元素个数或者范围的insert版本 返回指向 第一个新加入元素的迭代器 如果范围为空 不插入任何元素 insert操作会将第一个参数返回
+
+list<string> lst;
+auto iter = lst.begin();
+while (cin >> word)
+{
+	iter = lst.insert(iter, word); 等价于调用 push_front
+}
+
+使用 emplace 操作 这些操作构造而不是拷贝
+emplace_front ---- push_front
+emplace ---- insert
+emplace_back ---- push_back
+
+假定c保存 Sales_data 元素
+在c的末尾构造一个 Sales_data 对象
+c.emplace_back("978-0590353403", 25, 15.99); //使用三个参数的Sales_data构造函数 
+在容器管理的内存空间直接创建对象
+c.push_back("978-0590353403", 25, 15.99);  //错误 没有接受三个参数的push_back版本
+c.push_back(Sales_data("978-0590353403", 25, 15.99)); // 正确 创建一个临时的Sales_data对象 传递给push_back
+创建一个局部临时对象 并将其压入容器中
+
+c.emplace_back(); // 使用Sales_data 的默认构造函数
+c.emplace(iter, "999-99999999"); //iter指向c中的一个元素 其中保存了Sales_data元素 使用 Sales_data(string)
+c.emplace_front("978-0590353403", 25, 15.99); //使用Sales_data 接受三个类型参数的 构造函数
+
+传递给emplace函数的参数必须与元素类型的构造函数相匹配
+
+if (!c.empty())
+{
+	auto val = *c.begin(), val2 = c.front(); //val 和 val2 是c中第一个元素值的拷贝
+	auto last = c.end();
+	auto val3 = *(--last);  //val3 和val4 是c中最后一个元素值的拷贝   不能递减forward_list 迭代器
+	auto val4 = c.back();  //forward_list 不支持   获取c中尾元素的引用
+}
+
+if (!c.empty())
+{
+	c.front() = 42;
+	auto &v = c.back();  指向最后一个元素的引用
+	v = 1024;            改变c中的元素
+	auto v2 = c.back();  v2不是一个引用 它是c.back()的拷贝
+	v2 = 0;              未改变c中的元素
+}
+
+vector<string> svec;  空 vector
+cout << svec[0];      运行时错误 svec中没有元素
+cout << svec.at(0);   抛出一个out_of_range异常
+
+while (!ilist.empty())
+{
+	process(ilist.front());  对ilist的首元素进行一些处理
+	ilist.pop_front();       完成处理后删除首元素
+}
+
+list<int> lst = {0,1,2,3,4,5,6,7,8,9};
+auto it = lst.begin();
+while (it != lst.end())
+{
+	if (*it % 2)     元素为奇数 删除此元素
+	{
+		it = lst.erase(it);
+	}
+	else
+	{
+		++it;
+	}
+}
+
+elem1 = slist.earse(elem1, elem2);
+删除两个迭代器表示的范围内的元素
+返回指向最后一个被删元素之后位置的迭代器
+调用后 elem1 == elem2
+
+slist.clear() ---- slist.erase(slist.begin(), slist.end());
+
+forward_list 没有定义insert emplace 和erase
+           而是定义了insert_after emplace_after erase_after
+
+在forward_list 中添加或者删除元素时  必须关注两个迭代器 一个指向我们要处理的元素 一个指向其前驱
+
+forward_list<int> flst = {0,1,2,3,4,5,6,7,8,9};
+auto prev = flst.before_begin();   首前元素
+auto curr = flst.begin();          第一个元素
+while (curr != flst.end())         仍有元素要处理
+{
+	if (*curr % 2)
+	{
+		curr = flst.erase_after(prev);   删除它并移动curr   返回一个指向被删元素 之后元素 的迭代器
+	}
+	else
+	{
+		prev = curr;
+		++curr;
+	}
+}
+
+改变容器大小
+list<int> ilist(10, 42);  10个int 每个值是42
+ilist.resize(15);		  5个值为0的元素添加到ilist的末尾
+ilist.resize(25, -1);     将10个值为-1的元素添加到ilist的末尾
+ilist.resize(5);          从ilist末尾删除20个元素
+
+如果容器保存的是类类型元素 且 resize向容器添加新元素 则我们必须提供初始值
+或者元素类型必须提供一个默认构造函数
+resize不适用于array
+
+
+！！！！每次改变容器的操作之后 都正确地重新定位迭代器
+
+改变容器的循环程序
+删除偶数元素 复制每个奇数元素
+vector<int> vi = {0,1,2,3,4,5,6,7,8,9};
+auto iter = vi.begin();   调用begin 而不是 cbegin 因为我们要改变vi
+while(iter != vi.end())
+{
+	if (*iter % 2)
+	{
+		iter = vi.insert(iter, *iter); 复制当前元素 插到指定元素之前
+		iter += 2； 向前移动迭代器 跳过当前元素以及插入到它之前的元素
+	}
+	else
+		iter = vi.erase(iter);   删除偶数元素
+								iter指向我们删除元素之后的元素
+}
+
+不要保存end返回的迭代器
+auto begin = v.begin();
+	end = v.end();
+while(begin != end)
+{
+	++begin;
+	begin = v.insert(begin, 42);
+	++begin;
+}
+此代码未定义 在循环体内 我们向容器中添加一个元素 这个操作使保存在end中的迭代器 失效了
+这个迭代器 不再指向v中的任何元素 或是v中尾元素之后的位置
