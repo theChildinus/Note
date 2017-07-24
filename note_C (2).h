@@ -2352,3 +2352,148 @@ while(begin != end)
 }
 此代码未定义 在循环体内 我们向容器中添加一个元素 这个操作使保存在end中的迭代器 失效了
 这个迭代器 不再指向v中的任何元素 或是v中尾元素之后的位置
+
+更安全的方法 在每个循环步添加、删除元素后重新计算end
+while (begin != v.end())
+{
+	++begin;
+	begin = v.insert(begin, 42);
+	++begin;
+}
+
+vector 增长
+容器的size是指它已经保存的元素的数目 capacity则是在不分配新的内存空间的前提下它最多可以保存多少元素
+vector<int> ivec;
+cout << "ivec:size: " << ivec.size()
+	<<"capacity: " << ivec.capacity() << endl;
+for (vector<int>::size_type ix = 0; ix != 24; ++ix)
+{
+	ivec.push_back(ix);
+}
+cout << "ivec:size: " << ivec.size()
+	<<"capacity: " << ivec.capacity() << endl;
+
+	ivec:size: 0 capacity: 0
+	ivec:size: 24 capacity: 32
+
+ivec.reserve(50); 将capacity 至少设定为50 可能会更大
+cout << "ivec:size: " << ivec.size()
+	<<"capacity: " << ivec.capacity() << endl;
+
+	ivec:size: 24 capacity: 50
+
+while (ivec.size() != ivec.capacity())
+{
+	ivec.push_back(0);
+}
+cout << "ivec:size: " << ivec.size()
+	<<"capacity: " << ivec.capacity() << endl;
+
+	ivec:size: 50 capacity: 50
+
+ivec.push_back(42);   再插入一个元素
+cout << "ivec:size: " << ivec.size()
+	<<"capacity: " << ivec.capacity() << endl;
+
+	ivec:size: 51 capacity: 100
+
+ivec.shrink_to_fit(); 要求归还内存 也只是一个请求
+
+额外的string操作
+构造string的方法
+string s(cp, n);
+string s(s2, pos2);
+string s(s2, pos1, pos2);
+
+char noNull[] = {'H', 'i'};
+string s3(noNull); 未定义 noNull 不是以空字符结束
+如果我们传递给构造函数一个计数值 则数组不必以空字符串结尾
+
+s.substr(pos, n) 返回一个string 包含s中pos开始的n个字符的拷贝 pos默认值为0 n默认值为s.size() - pos
+
+s.insert(s.size(), 5, '!');   s末尾插入5个感叹号
+s.erase(s.size() - 5, 5);     s删除最后5个字符
+
+const char *cp = "Stately, plump Buck";
+s.assign(cp, 7);      s == "Stately"
+s.insert(s.size(), cp + 7);  s == "Stately, plump Buck"  字符插入s[size()]处(不存在的) 元素之前的位置
+
+string s = "some string", s2 = "some other string";
+s.insert(0, s2); 在s中位置0之前插入s2的拷贝
+s.insert(0, s2, 0, s2.size());  在s[0] 之前插入s2中 s2[0] 开始的s2.size()个字符
+
+string s("c++ primer"), s2 = s;
+s.insert(s.size(), " 4th Ed."); s == c++ primer 4th Ed.
+s2.append(" 4th Ed."); 等价方法 将"4th Ed."追加到s2; s == s2
+
+s.erase(11, 3); s == c++ primer Ed.
+s.insert(11, "5th"); s == c++ primer 5th Ed 
+s2.replace(11, 3, "5th"); s == s2
+s2.replace(11, 3, "Fifth"); s == c++ primer fifth Ed.
+
+string 搜索操作
+
+string搜索函数返回string::size_type值 该类型是一个unsigned类型
+string name("annabelle");
+auto pos1 = name.find("anna"); pos1 == 0
+
+string lowercase("annabelle");
+pos1 = lowercase.find("Anna"); pos == npos
+
+string numbers("0123456789"), name("r2d2");
+auto pos = name.find_first_of(numbers);  返回1 name中第一个数字的下标
+
+string dept("03714p3");
+auto pos = dept.find_first_not_of(numbers);  返回5 字符p的下标
+
+string::size_type pos = 0;
+while((pos = name.find_first_of(numbers, pos)) != string::npos)
+{
+	cout << "found number at index: " << pos << "element is " << name[pos] << endl;
+	++pos; 移动到下一个字符
+}
+
+string river("mississippi");
+auto first_pos = river.find("is");  返回1
+auto last_pos = river.rfind("is");  返回4
+
+compare函数
+
+数值转换
+int i = 42;
+string s = to_string(i); i转化为字符表示形式
+double d = stod(s);      s转换为浮点数
+
+string s2 = "pi = 3.14";
+d = stod(s2.substr(s2.find_first_of("+-.0123456789")));
+
+容器适配器
+除了顺序容器外 标准库还定义了三个顺序容器适配器
+stack queue 和 priority_queue
+一个适配器是一种机制 能使某种事物的行为看起来像另外一种事物一样
+
+deque<int> deq;
+stack<int> stk(deq); 从deq拷贝元素到stk
+
+stack<string, vector<string>> str_stk;  在vector上实现的空栈
+stack<string, vector<string>> str_stk2(svec); str_stk2在vector上实现 初始化时保存svec的拷贝
+
+栈适配器
+stack<int> intStack;
+for (size_t ix = 0; ix != 10; ++ix)
+	intStack.push(ix);
+while (!intStack.empty())
+{
+	int value = intStack.top();
+	intStack.pop();
+}
+
+每个容器适配器都基于底层容器类型的操作定义了自己的特殊操作
+我们只可以使用适配器操作 而不能使用底层容器类型的操作
+
+队列适配器
+quere 默认基于deque实现 priority_queue默认基于vector实现
+
+####### 第十章 泛型算法 #######
+
+
