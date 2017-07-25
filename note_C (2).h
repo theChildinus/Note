@@ -2625,3 +2625,97 @@ cout << count << " " << make_plural(count, "word", "s")
      << " of length " << sz << " or longer" << endl;
 
 make_plural 输出word 或者 words 具体输出取决于大小是否等于1
+
+for_each(wc, words.end(), [](const string &s){ cout << s << " ";}); 打印长度大于等于给定值的单词 每个单词后面接一个空格
+
+捕获列表只用于局部非static变量 lambda可以直接使用局部static变量和它所在函数之外声明的名字
+
+完整的biggies
+void biggies(vector<string> &words, vector<string>::string_type sz)
+{
+	//words字典序排序 删除重复单词
+	elimDups(words);  
+
+	//按照长度排序，长度相同的单词维持字典序
+	stable_sort(words.begin(), words.end(), [](const string &a, const string &b) { return a.size() < b.size(); });
+    
+    //获取一个迭代器 指向第一个满足size() >= sz的元素 
+	auto wc = find_if(words.begin(), words.end(), [sz](const string &a){ return a.size() >= sz; });
+	
+	//计算满足size>=sz的元素的数目
+	auto count = words.end() - wc;  
+	cout << count << " " << make_plural(count, "word", "s")
+     	<< " of length " << sz << " or longer" << endl;
+
+    //打印长度大于等于给定值的单词 每个单词后面跟一个空格
+    for_each(wc, words.end(), [](const string &s){ cout << s << " ";});
+
+    cout << endl;
+}
+
+值捕获
+void fcn1()
+{
+	size_t v1 = 42;  局部变量
+	auto f = [v1]{ return v1; };  将v1拷贝到名为f的可调用对象
+	v1 = 0;
+	auto j = f();  j为42 f保存可我们创建它时v1的拷贝
+}
+由于被捕获变量的值 是在lambda创建时拷贝 因此随后对其修改不会影响到lambda内对应的值
+
+引用捕获
+void fcn2()
+{
+	size_t v1 = 42;  局部变量
+	auto f2 = [&v1]{ return v1; }; 对象f2包含v1的引用
+	v1 = 0;
+	auto j = f2(); j为0 f2保存v1的引用 而非拷贝
+}
+当我们在lambda函数体内使用此变量时 实际上使用的是引用所绑定的对象
+引用捕获与返回引用有着相同的问题和限制 lambda捕获的都是局部变量
+
+void biggies(vector<string> &words, vector<string>::string_type sz, ostream &os = cout, char c = ' ')
+{
+	//与之前例子一样的重排words的代码
+	for_each(words.begin(), words.end(), [&os, c](const string &s){ os << s << c});
+}
+我们希望biggies函数可以接受一个ostream的引用用来输出数据 并接受一个字符作为分隔符
+我们不能捕获ostream对象 因此捕获os的唯一方法就是捕获其引用
+
+当以引用方式捕获一个变量时 必须保证在lambda执行时变量时存在的
+
+隐式捕获
+&告诉编译器采用捕获引用方式 =表示采用值捕获方式
+wc = find_if(words.begin(), words.end(), [=](const string &s){ return s.size() >= sz; });
+可以混用隐式捕获和显式捕获 但捕获列表第一个元素必须是 = 或者 &
+void biggies(vector<string> &words, vector<string>::string_type sz, ostream &os = cout, char c = ' ')
+{
+	//与之前例子一样的重排words的代码
+	for_each(words.begin(), words.end(), [&, c](const string &s){ os << s << c});
+	for_each(words.begin(), words.end(), [=, &os](const string &s){ os << s << c});
+}
+
+可变lambda
+void fcn3()
+{
+	size_t v1 = 42;
+	auto f = [v1] () mutable { return ++v1; }; f可以改变它所捕获的变量的值
+	v1 = 0;
+	auto j = f(); j为43
+}
+如果我们希望能改变一个被捕获的变量的值 就必须在参数列表首加上关键字 mutable
+
+一个引用捕获的变量是否（如往常一样）可以修改依赖于此引用指向的是一个const类型 还是一个非const类型
+void fcn4()
+{
+	size_t v1 = 42;
+	auto f2 = [&v1] {return ++v1; };
+	v1 = 0;
+	auto j = f2(); j 为1
+}
+
+transform(vi.begin(), vi.end(), vi.begin(), [](int i){ return i < 0 ? -i : i; });
+将一个序列中的每个负数替换为其绝对值
+
+transform(vi.begin(), vi.end(), vi.begin(), [](int i){ if (i < 0) return -i; else return i; });
+错误 不能推断lambda的返回类型
