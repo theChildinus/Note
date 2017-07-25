@@ -2496,4 +2496,132 @@ quere 默认基于deque实现 priority_queue默认基于vector实现
 
 ####### 第十章 泛型算法 #######
 
+int val = 42;
+auto result = find(vec.cbegin(), vec.cend(), val);
+cout << "the value" << val << (result == vec.cend() ? "is not present" : "is present") << endl;
 
+find 返回第一个等于给定值元素的迭代器
+	 如果范围中没有匹配元素 则find返回第二个参数来表示搜索失败
+
+int ia[] = {27, 210, 12, 47, 109, 83};
+int val = 83;
+int* result = find(begin(ia), end(ia), val);
+auto  result = find(ia + 1, ia + 4, val);
+从ia[1] 开始 直到(但不包含) ia[4] 的范围内查找元素
+
+迭代器令算法不依赖于容器 但是算法依赖于元素类型的操作
+
+泛型算法只会运行在迭代器之上 执行迭代器的操作
+算法永远不会改变底层容器的大小
+
+算法的输入范围  是第一个元素 和尾元素之后位置
+
+只读算法
+int sum = accumulate(vec.cbegin(), vec.cend(), 0); 对vec中的元素求和 和的初值是0
+第三个参数的类型决定了函数中使用哪个加法运算符 以及返回值的类型
+
+string sum = accumulate(v.cbegin(), v.cend(), string(""));
+将vector中的所有 string 元素连接起来
+如果是string sum = accumulate(v.cbegin(), v.cend(), ""); 会发生编译错误 原因在于const char* 并没有+运算符
+
+equal(roster1.cbegin(), roster1.cend(), roster2.cbegin());
+roster1 可以是vector<string> roster2 可以是list<const char*>  但是要求能够使用==来比较两个序列中的元素
+equal 基于一个非常重要的假定 假定第二个序列至少和第一个序列一样长
+
+算法不会执行迭代器的操作 因此他们自身不可能改变容器的大小
+
+
+写容器的算法
+fill(vec.begin(), vec.end(), 0); 将每个元素重置为0
+fill(vec.begin(), vec.begin() + vec.size() / 2, 10); 将容器的一个子序列设置为10
+
+算法不检查写操作
+vector<int> vec;
+fill_n(vec.begin(), vec.size(), 0); 将所有元素重置为0
+
+fill_n(vec.begin(), 10, 0); 错误 修改vec中10个不存在的元素
+向目的位置迭代器写入数据的算法假定目标位置足够大 能容纳要写入的元素
+
+插入迭代器 
+当我们通过一个迭代器向容器元素赋值时 值被赋予迭代器指向的元素
+而我们通过一个插入迭代器赋值时 一个与赋值号右侧值相等的元素被添加到容器中
+
+vector<int> vec; 空向量
+auto it = back_inserter(vec);  通过它赋值会将元素添加到vec中
+*it = 42; vec中现在有一个元素42
+back_inserter返回一个与该容器绑定的插入迭代器
+
+我们常常使用back_inserter来创建一个迭代器 作为算法目的位置来使用
+vector<int> vec;
+fill_n(back_inserter(vec), 10, 0); 添加10个元素到vec
+
+拷贝算法
+int a1[] = {0,1,2,3,4,5,6,7,8,9};
+int a2[sizeof(a1)/sizeof(*a1)];   a2与a1大小一样
+auto ret = copy(begin(a1), end(a1), a2);  a1内容拷贝给a2
+ret指向拷贝到a2的尾元素之后的位置
+
+replace(ilist.begin(), ilist.end(), 0, 42);
+replace_copy(ilist.cbegin(), ilist.cend(), back_inserter(ivec), 0, 42); 第三个迭代器参数指出调整后序列的保存位置
+
+重排容器元素的算法
+void elimDups(vector<string> &words)
+{
+	sort(words.begin(), words.end());
+	auto end_unique = unique(words.begin(), words.end()); 每个只出现一次的单词出现在前部 返回不重复区域之后一个位置的迭代器
+	//words的大小并未改变
+	words.erase(end_unique, words.end()); //即使words中没有重复单词 这样调用 erase也是安全的
+}
+
+定制操作
+向算法传递函数
+谓词 元素类型必须能转换为谓词的参数类型
+bool isShorter(const string &s1, const string &s2)
+{
+	return s1.size() < s2.size();
+}
+sort(words.begin(), words.end(), isShorter); 按长度由短至长排序words
+
+排序算法 stable_sort 这种稳定排序算法维持相等元素的原有顺序
+elimDups(words);    //字典序重排 并消除重复单词
+stable_sort(words.begin(), words.end(), isShorter);  //按长度重新排序 长度相同的单词维持字典序
+for (const auto &s : words)
+{
+	cout << s << " ";
+}
+cout << endl;
+
+lambda 表达式
+可调度对象（对于一个对象或一个表达式 如果可以对其使用调用运算符 则称它是可调用的）  
+两种可调度对象 函数和函数指针 还有其他两种
+重载了函数调用运算符的类 以及 lambda表达式
+
+与任何函数类似 一个lambda具有一个返回类型 一个参数列表 和一个 函数体
+与函数不同 lambda可以定义在函数内部
+
+[capture list](parameter list) -> return type {function body}
+
+auto f = []{ return 42; }; 定义一个可调用对象f 它不接受参数 返回42
+
+cout << f() << endl; 打印42
+如果lambda的函数体包含任意单一return语句之外的内容 且未指定返回类型 则返回void
+
+与普通函数不同 lambda不能有默认参数
+与 isShorter 功能完全相同的lambda：
+[](const string &a, const string &b) { return a.size() < b.size(); }
+
+调用 stable_sort:
+stable_sort(words.begin(), words.end(), [](const string &a, const string &b) { return a.size() < b.size(); });
+
+[sz](const string &a){ return a.size() >= sz; };
+一个lambda只有在其捕获列表中捕获一个它所在函数的局部变量 才能在函数体中使用该变量
+
+使用此lambda我们就可以查找第一个长度大于等于sz的元素
+auto wc = find_if(words.begin(), words.end(), [sz](const string &a){ return a.size() >= sz; });
+这里对find_if的调用返回一个迭代器 指向第一个长度不小于参数sz的元素 否则返回words.end()的一个拷贝
+
+auto count = words.end() - wc;
+cout << count << " " << make_plural(count, "word", "s")
+     << " of length " << sz << " or longer" << endl;
+
+make_plural 输出word 或者 words 具体输出取决于大小是否等于1
