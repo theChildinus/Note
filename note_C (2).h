@@ -2917,3 +2917,45 @@ rcomma 和 rcomma.base() 必须生成相邻位置而不是相同位置
 前向迭代器       可读写 多遍扫描 只能递增
 双向迭代器       可读写 多遍扫描 可递增递减
 随机访问迭代器   可读写 多遍扫描 支持全部迭代器运算
+
+算法除了参数规范 还遵守一套命名和重载规范
+
+一些算法使用重载形式传递一个谓词
+unique(beg, end);
+unique(beg, end, comp);
+_if 版本的算法
+find(beg, end, val);   查找输入范围中 val第一次出现的位置
+find_if(beg, end, pred);  查找第一个令pred为真的元素
+区分拷贝元素的版本和不拷贝的版本
+reverse(beg, end);     反转输入范围中元素的顺序
+reverse_copy(beg, end, dest);  将元素按逆序拷贝到dest
+
+remove_if(v1.begin(), v1.end(), [](int i){ return i % 2; }); 从v1中删除奇数元素
+remove_copy_if(v1.begin(), v1.end(), back_inserter(v2), [](int i){ return i % 2; }); 将偶数元素从v1拷贝到v2 v1不变
+
+
+特定容器算法
+list 和 forward_list成员函数版本的算法 应该优先调用
+lst.merge(lst2);   lst2 并入 lst  lst 和 list2 都必须是有序的
+lst.merge(lst2, comp);  元素将从lst2中删除 在合并之后 lst2变为空
+
+lst.remove(val);     调用erase删掉与给定值==的或令一元谓词为真的每个元素
+lst.remove_if(pred);
+
+lst.reverse()  反转lst中元素的顺序
+
+lst.sort() 使用<或给定比较操作排序元素
+lst.sort(comp)
+
+lst.unique()    调用erase删除同一个值的连续拷贝 第一个版本使用==
+lst.unique(pred) 第二个版本使用给定的二元谓词
+
+splice成员 链表数据结构特有
+lst.splice(args) 
+flst.splice_after(args)
+(p, lst2)     lst2所有元素移动到lst中p之前的位置 或是 flst中p之后的位置 将元素从lst2中删除 lst2类型与lst或flst相同 且不是同一链表
+(p, lst2, p2) p2指向lst2中位置有效的迭代器 p2指向的元素移动到lst中 或将p2之后的元素移动到flst中 lst2可以是与lst 或flst相同的链表
+(p, lst2, b, e) b e表示lst2中的合法范围 将给定范围中的元素从lst2移动到lst或flst lst2与lst(flst) 可以是相同的链表 但p不能指向范围中
+
+链表版本算法会改变底层的容器
+
