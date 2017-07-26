@@ -2959,3 +2959,52 @@ flst.splice_after(args)
 
 链表版本算法会改变底层的容器
 
+
+
+####### 第十一章 关联容器 #######
+
+按关键字有序保存元素
+map    关联数组 保存关键字-值对
+set    关键字即值 即只能保存关键字的容器
+multimap  关键字可重复出现的map
+multiset
+
+无序集合
+unordered_map  用哈希函数组织的map
+unordered_set
+unordered_multimap  哈希组织的map 关键字可重复出现
+unordered_multiset
+
+单词计数
+map<string, size_t> word_count;
+string word;
+while (cin >> word)
+{
+	++word_count[word];
+}
+for (const auto &w : word_count)
+{
+	cout << w.first << "occurs" << w.second
+	<< ((w.second > 1) ? "times" : "time") << endl;
+}
+
+使用set 
+std::map<string, size_t> word_count;
+set<string> exclude = { "The", "But", "And", "Or", "An", "A",
+						"the", "but", "and", "or", "an", "a" };
+string word;
+while (cin >> word)
+{
+	if (exclude.find(word) == exclude.end())  //find调用返回一个迭代器
+		++word_count[word];  //获取并递增word的计数器 只统计不在exclude中的单词
+}
+
+关联容器不支持构造函数或者插入操作
+
+ //空容器
+map<string, size_t> word_count;    
+//列表初始化
+set<string> exclude = { "The", "But", "And", "Or", "An", "A",
+						"the", "but", "and", "or", "an", "a" };  
+map<string, string> authors = { {"joyce", "james"}, {"austen", "jane"}, {"Dickens", "charles"} };
+
