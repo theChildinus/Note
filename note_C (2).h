@@ -2718,4 +2718,202 @@ transform(vi.begin(), vi.end(), vi.begin(), [](int i){ return i < 0 ? -i : i; })
 将一个序列中的每个负数替换为其绝对值
 
 transform(vi.begin(), vi.end(), vi.begin(), [](int i){ if (i < 0) return -i; else return i; });
-错误 不能推断lambda的返回类型
+错误 不能推断lambda的返回类型 需要使用尾置返回类型
+
+transform(vi.begin(), vi.end(), vi.begin(), [](int i) -> int { if (i < 0) return -i; else return i; });
+
+
+参数绑定
+
+我们用在find_if调用中的lambda比较一个string和一个给定的大小
+我们可以很容易的编写一个完成同样工作的函数
+bool check_size(const string &s, string::size_type sz)
+{
+	return s.size() >= sz;
+}
+但是find_if接受一个一元谓词 为了用check_size 来代替此lambda 必须解决如何向sz形参传递一个参数的问题
+
+auto newCallable = bind(callable, arg_list);
+newCallable本身是一个可调用对象 
+arg_list中的参数可能包含形如_n的名字 其中n是一个整数 这些参数是占位符 表示newCallable的参数
+它们占据了传递给newCallable的参数的位置 _1表示newCallable的第一个参数
+
+check6 是一个可调用对象 接受一个string类型的参数
+并用此string和值6来调用check_size
+auto check6 = bind(check_size, _1, 6);
+此bind函数只有一个占位符 表示check6只接受单一参数
+占位符出现在arg_list 的第一个位置 表示check6 的此参数对应check_size的第一个参数
+此参数是一个const string& 因此调用check6必须传递给它一个string 类型的参数
+check6会将此参数传递给check_size
+
+string s = "hello";
+bool b1 = check6(s);
+
+auto wc = find_if(words.begin(), words.end(), [sz](const string &a))
+替换为
+auto wc = find_if(words.begin(), words.edn(), bind(check_size, _1, sz));
+
+使用placeholders名字
+using std::placeholders::_1;
+using namespace std::placeholders;
+
+bind参数
+假设f是一个可调用对象
+auto g = bind(f, a, b, _2, c, _1);
+生成一个新的可调用对象 它有两个参数 分别用占位符_2 和 _1表示
+这个新的可调用对象将它自己的参数作为第三个和第五个参数传递给f
+第一、二、四个参数分别被绑定到给定的值a,b,c上
+这个bind调用会将
+g(_1, _2)  映射为  f(a, b, _2, c, _1);
+
+用bind重排参数顺序
+sort(words.begin(), words.end(), isShorter);    单词长度由短至长排序
+sort(words.begin(), words.end(), bind(isShorter, _2, _1));  单词长度由长至短排序
+
+绑定引用参数
+for_each(words.begin(), words.end(), [&os, c](const string &s){ os << s << c});
+可以编写函数代替
+ostream &print(ostream &os, const string &s, char c)
+{
+	return os << s << c;
+}
+
+但是不能直接用bind来代替对os的捕获
+for_each(words.begin(), words.end(), bind(print, os, _1, ' ')); 错误 不能拷贝os
+如果我们希望传递给bind一个对象而又不拷贝它 就必须使用标准库ref函数
+
+for_each(words.begin(), words.end(), bind(print, ref(os), _1, ' '));
+cref 生成一个保存const引用的类
+
+再探迭代器 额外几种迭代器
+插入迭代器
+流迭代器
+反向迭代器
+移动迭代器
+
+插入器是一个迭代器适配器 接受一个容器 生成一个迭代器
+back_inserter  创建一个使用push_back的迭代器
+front_inserter 创建一个使用push_front的迭代器
+inserter       创建一个使用insert的迭代器
+
+如果it是由inserter生成的迭代器 则
+*it = val;
+效果等于
+it = c.insert(it, val);  it指向新加入的元素
+++it; 递增it使它指向原来的元素
+
+list<int> lst = {1,2,3,4};
+list<int> lst2, lst3;
+copy(lst.cbegin(), lst.cend(), front_inserter(lst2));  lst2 = 4 3 2 1 调用 push_front
+copy(lst.cbegin(), lst.cend(), inserter(lst3));        lst3 = 1 2 3 4 调用 insert
+
+
+iostream迭代器    流迭代器不支持递减操作
+istream_iterator  读取输入流
+ostream_iterator  向一个输出流写数据
+
+istream_iterator<int> int_it(cin);  从cin读取int
+istream_iterator<int> int_eof;      尾后迭代器
+ifstream in("afile");
+istream_iterator<string> str_it(in);从afile读取字符串
+
+istream_iterator<int> in_iter(cin);  cin读取int
+istream_iterator<int> eof;           istream尾后迭代器
+while (in_iter != eof)               当有数据可供读取时
+{
+	后置递增运算读取流 返回迭代器的旧值
+	解引用迭代器 获取从流读取的前一个值
+	vec.push_back(*in_iter++);
+}
+重写
+istream_iterator<int> in_iter(cin), eof; 从cin读取int
+vector<int> vec(in_iter, eof);   从迭代器范围构造vec
+
+使用算法操作流迭代器
+istream_iterator<int> in(cin), eof;
+cout << accumulate(in, eof, 0) << endl;
+此时调用会计算出从标准输入的值的和
+
+istream_iterator允许使用惰性求值
+
+必须将ostream_iterator绑定到一个指定的流 不允许空的或者表示尾后位置的ostream_iterator
+ostream_iterator<int> out_iter(cout, " ");
+for (auto e : vec)
+{
+	*out_iter++ = e;  赋值语句实际上将元素写到cout
+}
+cout << endl;
+
+重写
+for (auto e : vec)
+	out_iter = e;
+cout << endl;
+推荐第一种写法
+可以调用copy来打印vec中的元素
+
+copy(vec.begin(), vec.end(), out_iter);
+cout << endl;
+
+使用流迭代器处理 类类型
+istream_iterator<Sales_item> item_iter(cin), eof;
+ostream_iterator<Sales_item> out_iter(cout, "\n");
+
+//第一笔交易记录存在sum中 并读取下一条
+Sales_item sum = *item_iter++;
+while (item_iter != eof)
+{
+	if (item_iter->isbn() == sum.isbn())   //如果当前交易记录 有着相同的isbn号
+	{
+		sum += *item_iter++;  //将其加到sum上并读取下一条记录
+	}
+	else
+	{
+		out_iter = sum;  //输出sum当前值
+		sum = *item_iter++;  //读取下一条记录
+	}
+}
+out_iter = sum;  //记得打印最后一组记录的和
+
+
+反向迭代器
+对于反向迭代器而言 递增一个反向迭代器++it 会移动到前一个元素
+递减一个反向迭代器 会移动到下一个元素
+除了 forward_list 其他容器都支持反向迭代器
+
+vector<int> vec = {0,1,2,3,4,5,6,7,8,9};
+for (auto r_iter = vec.crbegin(); r_iter != vec.crend(); ++r_iter)
+{
+	cout << *r_iter << endl;  9,8,7, .... 0
+}
+sort(vec.begin(), vec.end());  按照正常序排序vec
+sort(vec.rbegin(), vec.rend()); 按照逆序排序 将最小的元素放到vec的末尾
+
+名为line的string 保存着一个逗号分隔的单词列表
+打印第一个单词
+auto comma = find(line.cbegin(), line.cend(), ',');
+cout << string(line.cbegin(), comma) << endl;
+
+查找最后一个单词
+auto rcomma = find(line.crbegin(), line.crend(), ',');
+
+但是
+cout << string(line.crbegin(), rcomma) << endl;
+如果输入是 FIRST,MIDDLE,LAST 
+这句话会打印TSAL
+cout << string(rcomma.base(), line.cend()) << endl; //base 返回对应的普通迭代器
+
+[line.crbegin(), rcomma)
+[rcomma.base(), line.cend())
+指向相同的元素范围
+rcomma 和 rcomma.base() 必须生成相邻位置而不是相同位置
+当我们从一个普通迭代器初始化一个反向迭代器
+或者给一个反向迭代器赋值时 结果迭代器与原迭代器指向的并不是相同的元素
+
+
+泛型算法结构
+算法所要求的迭代器操作可以分为5迭代器类别
+输入迭代器       只读 不写 单遍扫描 只能递增
+输出迭代器       只写 不读 单遍扫描 只能递增
+前向迭代器       可读写 多遍扫描 只能递增
+双向迭代器       可读写 多遍扫描 可递增递减
+随机访问迭代器   可读写 多遍扫描 支持全部迭代器运算
