@@ -3008,3 +3008,208 @@ set<string> exclude = { "The", "But", "And", "Or", "An", "A",
 						"the", "but", "and", "or", "an", "a" };  
 map<string, string> authors = { {"joyce", "james"}, {"austen", "jane"}, {"Dickens", "charles"} };
 
+
+vector<int> ivec;
+for (vector<int>::size_type i = 0; i != 10; ++i)
+{
+	ivec.push_back(i);
+	ivec.push_back(i);
+}
+set<int> iset(ivec.cbegin(), ivec.cend());  //iset 包含来自ivec的不重复的元素 miset包含所有20个元素
+multiset<int> miset(ivec.cbegin(), ivec.cend());
+cout << ivec.size() << endl;    20
+cout << iset.size() << endl;    10
+cout << miset.size() << endl;   20
+
+对于有序容器 关键字类型必须定义元素比较的方法
+在集合类型中 关键字类型就是元素类型
+在映射类型中 关键字类型就是元素第一部分的类型 word_count的关键字类型是string
+
+提供自己定义的操作来代替关键字上的<运算符 所提供的操作必须在关键字类型上定义一个严格弱序
+
+使用关键字类型的比较函数
+我们不能直接定义一个 Sales_data 的 multiset 因为 Sales_data 没有<运算符
+为了使用我们自己的操作 在定义 multiset时我们必须提供两种类型 关键字类型 以及 比较操作类型
+bool compareIsbn(const Sales_data &lhs, const Sales_data &rhs)
+{
+	return lhs.isbn() < rhs.isbn();
+}
+multiset<Sales_data, decltype(compareIsbn)*> bookstore(compareIsbn);
+//bookstore中多条记录可以有相同的ISBN
+//bookstore中的元素以ISBN的顺序进行排列
+用 compareIsbn来初始化bookstore对象 这表示我们向bookstore 添加元素时 通过调用compareIsbn来为这些元素排序
+
+
+pair类型
+pair<string, string> anon;
+pair<string, size_t> word_count;
+pair<string, vector<int>> line;
+pair的默认构造函数对数据成员进行默认初始化
+
+我们也可以为每个成员提供初始化器
+pair<string, string> author{"james", "joyce"};
+
+pair的数据成员是public的
+map的元素是pair
+
+创建pair对象的函数
+一个函数需要返回一个pair 在新标准下我们可以对返回值列表初始化
+pair<string, int> process(vector<string> &v)
+{
+	if (!v.empty())
+	{
+		return { v.back(), v.back().size() }; // 列表初始化 返回一个由v中最后一个string及其大小构成的pair
+	}
+	else
+		return pair<string, int>();  //隐式构造返回值
+}
+
+if (!v.empty())
+{
+	return make_pair(v.back(), v.back().size());
+}
+我们还可以使用make_pair来生成pair对象 pair的两个类型来自make_pair的参数
+
+关联容器操作 
+set<string>::value_type v1;          v1 --- string
+set<string>::key_type v2;            v2 --- string
+map<string, int>::value_type v3;     v3 --- pair<const string, int>
+map<string, int>::key_type v4;       v4 --- string
+map<string, int>::mapped_type v5;    v5 --- int   关键字关联的类型
+
+
+关联容器迭代器
+当解引用一个关联容器迭代器时 我们会得到一个类型为容器的 value_type 的值的引用
+auto map_it = word_count.begin();
+*map_it 是指向一个pair<const string, size_t> 对象的引用 
+cout << map_it->first;        打印关键字
+cout << " " << map_it->second;  打印此元素的值
+
+map_it->first = "new key";    错误 关键字是const的
+++map_it->second;   正确 我们可以通过迭代器改变元素
+
+我们可以改变pair的值 但是不能改变关键字成员的值
+
+set的迭代器是const的
+set<int> iset = {0,1,2,3,4,5,6,7,8,9};
+set<int>::iterator set_it = iset.begin();
+if (set_it != iset.end())
+{
+	*set_it = 42;              错误 set中的关键字是只读的
+	cout << *set_it << endl;   正确 可以读关键字
+}
+
+遍历关联容器
+auto map_it = word_count.cbegin();
+while (map_it != word_count.cend())
+{
+	cout << map_it->first << "occurs"
+	<< map_it->second << "times" << endl;
+	++map_it;
+}
+
+我们通常不对关联容器使用泛型算法 因为关键字是const
+关联容器可用于只读取元素的算法 关联容器定义find成员 比 调用泛型find快的多
+
+添加元素
+关联容器的insert成员
+vector<int> ivec = {2,4,6,8,2,4,6,8};  ivec 8 个元素
+set<int> set2;                        空集合
+set2.insert(ivec.cbegin(), ivec.cend()); set2有四个元素
+set2.inset({1,3,5,7,1,3,5,7});           set2现在有8个元素
+
+向map添加元素
+word_count.insert({word, 1});
+word_count.insert(make_pair(word, 1));
+word_count.insert(pair<string, size_t>(word, 1));
+word_count.insert(map<string, size_t>::value_type(word, 1));
+
+检测insert的返回值
+insert 和 emplace 返回的值依赖于容器类型和参数
+对于不包含重复关键字的容器 添加单一元素的insert 和 emplace 版本返回一个pair
+pair的first成员 是一个迭代器
+pair的second成员 是一个bool值 指出元素是否插入成功还是已经存在容器中
+map<string, size_t> word_count;
+string word;
+while (cin >> word)
+{
+	auto ret = word_count.insert({word, 1});
+	if (!ret.second)   word已在word_count中
+	{
+		++ret.first->second;   //递增计数器
+	}
+}
+
+ret.first 是 pair的第一个成员 是一个map迭代器
+ret.first->second map中元素的值部分
+
+向 multiset 和 multimap 添加元素
+multimap<string, string> authors;
+authors.insert({"barth, john", "sot-weed factor"});
+authors.insert({"barth, john", "Lost in the funhouse"});
+
+删除元素 
+传递给 erase一个迭代器 或者 一个迭代器对 来删除一个元素 或者 一个元素范围
+关联容器提供额外的erase操作 接受一个key_value参数 返回实际删除元素的数量
+if (word_count.erase(removal_word))  //删除一个关键字 返回删除的元素数量
+	cout << "ok:" << removal_word << "removed\n";
+else
+	cout << "oops: " << removal_word << " not found!\n";
+
+auto cnt = authors.erase("barth, john"); cnt = 2
+
+map的下标操作
+set不支持下标  不能对multimap 和 unordered_multimap 进行下标操作
+
+map<string, size_t> word_count;
+word_count["anna"] = 1;  //插入一个关键字为anna的元素 关联值进行值初始化 然后将1赋予它
+
+我们只能对非const的map进行下标操作
+
+对一个map使用下标操作 其行为与数组或vector上的下标操作很不相同
+使用一个不在容器中的关键字作为下标 会添加一个具有此关键字的元素到map中
+
+c.at(k) 若k不在c中 抛出 out_of_range异常
+
+通常解引用一个迭代器所返回的类型 与 下标运算符返回的类型一样
+但是对于 map 对map进行下标操作时  会获得一个mapped_type对象
+但当解引用一个map迭代器时 会得到一个value_type对象
+
+cout << word_count["anna"];  1
+++word_count["anna"];
+cout << word_count["anna"];  2
+
+有时只是想知道一个元素是否在map中 并不想添加元素就不能使用下标运算符
+
+访问元素
+
+set<int> iset = {0,1,2,3,4,5,6,7,8,9};
+iset.find(1);   返回一个迭代器 指向key == 1 的元素
+iset.find(11);  返回一个迭代器 其值等于iset.end()
+iset.count(1);  返回1
+iset.count(11); 返回0
+
+需要计数 用 count 不需要用 find
+
+c.lower_bound(k)  返回一个迭代器 指向第一个关键字不小于k的元素
+c.upper_bound(k)  返回一个迭代器 指向第一个关键字大于k的元素
+c.equal_range(k)  返回一个迭代器pair 关键字k的元素范围 若k不存在 pair两个成员均等于c.end()
+
+对map使用find代替下标操作
+if (word_count.find("foobar") == word_count.end())
+{
+	cout << "foobar is not in the map" << endl;
+}
+
+在multiset 和 multimap中查找元素
+如果在multiset 和 multimap中有多个元素具有相同的关键字 则这些元素在容器中会相邻存储
+
+string search_item("alain de botton");
+auto entries = authors.count(search_item);   有多少著作
+auto iter = authors.find(search_item);       指向第一个关键字为此作者的元素
+while (entries)
+{
+	cout << iter->second << endl;
+	++iter;
+	--entries;
+}
