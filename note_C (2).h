@@ -3429,3 +3429,205 @@ p被销毁后 指向的内存还有其他的使用者
 3.程序需要在多个对象间共享数据
 
 容器类是出于第一种原因使用动态内存的例子
+它使用动态内存是为了让多个对象能共享相同的底层数据
+
+vector<string> v1;
+{
+	std::vector<string> v2 = {"a", "an", "the"};
+	v1 = v2;
+} //v2被销毁 其中的元素也被销毁
+//v1有三个元素 是原来v2中元素的拷贝
+
+假设我们希望定义一个名为Blob的类
+当我们拷贝一个Blob时 原Blob对象及其拷贝引用相同的底层元素
+Blob<string> b1;
+{
+	Blob<string> b2 = {"a", "an", "the"};
+	b1 = b2;  //b1 b2共享相同的元素
+}//b2被销毁 但是b2中的元素不能销毁
+//b1指向最初由b2创建的元素
+
+定义动态内存的一个常见原因是允许多个对象共享相同的状态
+
+定义StrBlob类
+为了保证vector中的元素继续存在 我们将vector保存在动态内存中
+为了实现数据共享 我们为每个 StrBlob 设置一个 shared_ptr来管理动态分配的vector
+class StrBlob
+{
+public:
+	typedef std::vector<std::string>::size_type size_type;
+	StrBlob();
+	StrBlob(std::initializer_list<std::string> il);
+	size_type size() const { return data->size(); }
+	bool empty() const { return data->empty(); }
+	void push_back(const std::string &t) { data->push_back(t); }
+	void pop_back();
+	std::string& front();
+	std::string& back();
+private:
+	std::shared_ptr<std::vector<std::string>> data;
+	void check(size_type i, const std::string &msg) const;
+};
+
+StrBlob构造函数
+StrBlob::StrBlob(): data(make_shared<vector<string>>()) { }
+StrBlob::StrBlob(initializer_list<string> il): data(make_shared<vector<string>>(il)) { }
+
+元素访问成员函数
+void StrBlob::check(size_type i, const string &msg) const
+{
+	if (i >= data->size())
+	{
+		throw out_of_range(msg);
+	}
+}
+
+string& StrBlob::front()
+{
+	check(0, "front on empty StrBlob");
+	return data->front();
+}
+string& StrBlob::back()
+{
+	check(0, "back on empty StrBlob");
+	return data->back();
+}
+void StrBlob::pop_back()
+{
+	check(0, "pop_back on empty StrBlob");
+	data->pop_back();
+}
+
+将一个 shared_ptr赋值给另一个 shared_ptr 会递增右边shared_ptr的引用计数
+递减左边 shared_ptr的引用计数
+
+直接管理内存
+int *p1 = new int;  //p1指向一个动态分配 未初始化的无名对象
+
+string *ps = new string;  //初始化为空string
+int *pi = new int;  //pi指向一个未初始化的int
+
+int *pi = new int(1024);   //pi指向的对象的值为1024
+string *ps = new string(10, '9');  //*ps为 "9999999999"
+
+vector<int> *pv = new vector<int>{0,1,2,3,4,5,6,7,8,9};
+
+string *ps1 = new string;   //默认初始化为空string
+string *ps = new string(); //值初始化为空string
+string *pi1 = new int;    //默认初始化 *pi1的值未定义
+string *pi2 = new int();  //值初始化为0 *pi2为0
+
+对于定义了自己的构造函数的类类型来说 要求值初始化是没有意义的
+不管采用什么方式 对象都会通过默认构造函数来初始化
+但对于内置类型 两种形式就差别大了
+值初始化的内置类型对象有着良好定义的值
+而默认初始化的对象的值则是未定义的
+
+如果我们提供一个括号包围的初始化器 就可以使用auto
+auto p1 = new auto(obj);     //p指向一个与obj类型相同的对象
+							 //该对象用obj进行初始化
+auto p2 = new auto{a, b, c}; //错误 括号中只能有单个初始化器
+
+p1类型是指针
+
+动态分配的const对象
+const int *pci = new const int(1024);  //分配并初始化一个 const int
+const string *pcs = new const string;  //分配并默认初始化一个 const的空 string
+一个动态分配的const对象必须进行初始化
+
+int *p1 = new int;   //如果分配失败 new抛出 std::bad_alloc
+int *p2 = new (nothrow) int; //如果分配失败 new返回一个空指针
+
+释放动态内存
+为了防止内存耗尽
+delete表达式接受一个指针 指向我们要释放的对象
+delete p; p必须指向一个动态分配的对象或者空指针
+
+int i, *pi1 = &i, *pi2 = nullptr;
+double *pd = new double(33), *pd2 = pd;
+delete i;   错误 i不是一个指针
+delete pi1; 未定义 pi1 指向一个局部变量
+delete pd;  正确
+delete pd2; 未定义 pd2 指向的内存已经被释放了
+delete pi2; 正确 释放一个空指针总是没有错的
+
+const int *pci = new const int(1024);
+delete pci; 正确 释放一个const对象
+
+动态内存的管理非常容易出错
+1.忘记delete内存
+2.使用已经释放掉的对象 通过在释放内存后将指针置为空 有时可以检测出这种错误
+3.同一快内存释放两次
+
+delete之后重置指针值 这只是提供了有限的保护
+在delete之后 将nullptr赋予指针
+int *p(new int(42));  p指向动态内存
+auto q = p;           p和q指向相同的内存
+delete p;             p和q均变为无效
+p = nullptr;          指出p不能再绑定到任何对象
+
+重置p对q没有任何作用 在实际系统中 查找指向相同内存的所有指针异常困难
+
+shared_ptr 和 new 结合使用
+shared_ptr<double> p1;   shared_ptr可以指向一个double
+shared_ptr<int> p2(new int(42));  p2指向一个值为42的int
+
+shared_ptr<int> p1 = new int(1024);  错误 必须使用直接初始化形式
+shared_ptr<int> p2(new int(1024));   正确 使用了直接初始化形式
+
+由于我们不能进行内置指针到智能指针间的隐式转换 因此这条初始化语句是错误的
+
+shared_ptr<int> clone(int p)
+{
+	return new int(p); 错误 隐式转换为shared_ptr<int>
+}
+
+shared_ptr<int> clone(int p)
+{
+	return shared_ptr<int>(new int(p));
+	正确 显式的使用 int*创建shared_ptr<int>
+}
+
+不要混合使用普通指针和智能指针....
+
+void process(shared_ptr<int> ptr)  值传递方式 实参拷贝到ptr中
+{
+	//使用ptr
+}//ptr被销毁
+shared_ptr<int> p(new int(42));   引用计数为1
+process(p);     拷贝p会增加他的引用计数 在process中值为2
+int i = *p;     引用计数值为1
+
+
+int *x(new int(1024));   危险 x是一个普通指针 不是一个智能指针
+process(x);  不能由 int*转换成 shared_ptr<int>
+process(shared_ptr<int>(x));  合法的 但内存会被释放   临时的shared_ptr 表达式结束 这个对象就被销毁了
+int j = *x; 未定义 x是一个空悬指针
+
+....也不要使用get初始化另一个智能指针或为 智能指针赋值
+
+智能指针定义了一个名为get的函数 返回一个内置指针
+是为了需要向不能使用智能指针的代码传递一个内置指针 使用get返回的指针代码不能delete此指针
+
+shared_ptr<int> p(new int(42));  引用计数 1
+int *q = p.get();   正确 使用q要注意 不能让它管理的指针被释放
+{  //新程序块
+	//未定义 两个独立的shared_ptr指向相同的内存
+	shared_ptr<int>(q);
+}//程序块结束 q被销毁 它指向的内存被释放
+int foo = *p;   //未定义p指向的内存已经被释放
+
+p q指向相同的内存 由于他们相互独立创建的 因此各自的引用计数都是1
+永远不要用get初始化另一个智能指针或者 为另一个智能指针赋值
+
+
+其他shared_ptr操作
+p = new int(1024);   //错误 不能将一个指针赋予shared_ptr
+p.reset(new int(1024));  //正确 p指向了一个新对象
+
+if (!p.unique())
+{
+	p.reset(new string(*p)); 我们不是唯一用户 分配新的拷贝
+}
+*p += newVal; 现在我们知道自己是唯一的用户 可以改变对象的值
+
