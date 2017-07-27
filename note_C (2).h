@@ -3191,8 +3191,8 @@ iset.count(11); 返回0
 
 需要计数 用 count 不需要用 find
 
-c.lower_bound(k)  返回一个迭代器 指向第一个关键字不小于k的元素
-c.upper_bound(k)  返回一个迭代器 指向第一个关键字大于k的元素
+c.lower_bound(k)  返回一个迭代器 指向第一个关键字不小于k的元素  第一个具有给定关键字的元素
+c.upper_bound(k)  返回一个迭代器 指向第一个关键字大于k的元素  最后一个匹配给定关键字的元素之后的位置
 c.equal_range(k)  返回一个迭代器pair 关键字k的元素范围 若k不存在 pair两个成员均等于c.end()
 
 对map使用find代替下标操作
@@ -3204,6 +3204,7 @@ if (word_count.find("foobar") == word_count.end())
 在multiset 和 multimap中查找元素
 如果在multiset 和 multimap中有多个元素具有相同的关键字 则这些元素在容器中会相邻存储
 
+方法一
 string search_item("alain de botton");
 auto entries = authors.count(search_item);   有多少著作
 auto iter = authors.find(search_item);       指向第一个关键字为此作者的元素
@@ -3213,3 +3214,218 @@ while (entries)
 	++iter;
 	--entries;
 }
+
+一种不同的 面向迭代器的解决方法
+方法二
+lower_bound返回的迭代器可能指向一个具有给定关键字的元素 但也可能不指向
+如果关键字不在容器中 lower_bound会返回关键字第一个安全插入点 不影响容器中元素顺序的插入位置
+
+for (auto beg = authors.lower_bound(search_item), end = authors.upper_bound(search_item);
+		beg != end; ++beg)
+{
+	cout << beg->second << endl;
+}
+beg 和 end 表示对应此作者的元素范围
+
+如果容器中存在元素 beg定位到第一个search_item匹配的元素
+如果容器中不存在元素 beg将指向第一个关键字大于search_item的元素 有可能是尾后迭代器
+end指向最后一个匹配指定关键字的元素之后的元素
+这两个操作并不报告是否存在 重要的是他们的返回值可作为一个迭代器范围
+
+如果没有元素和关键字匹配 lower_bound 和 upper_bound 会返回相等的迭代器 都指向给定元素的插入点
+能保证容器中元素的插入位置
+
+方法三
+equal_range函数 返回迭代器pair
+for (auto pos = authors.equal_range(search_item); pos.first != pos.second; ++pos.first)
+{
+	cout << pos.first->second << endl;   pos保存迭代器对 表示与关键字匹配的元素范围 authors是一个map
+}
+
+单词转换的map
+where r u
+y dont u send me a pic 
+k thk 18r
+------->
+where are you
+why dont you send me a picture
+okay? thanks later 
+
+void word_tansform(ifstream &map_file, ifstream &input)
+{
+	auto trans_map = buildMap(map_file);  //保存转换规则
+	string text;
+	while (getline(input, text))     //保存输入中的每一行 读入一行
+	{
+		istringstream stream(text);   //读取每个单词
+		string word;
+		bool firstword = true;
+		while (stream >> word)
+		{
+			if (firstword)      //控制是否打印空格
+				firstword = false;
+			else
+			{
+				cout << " ";
+				cout << transform(word, trans_map); //transform 返回它的第一个参数或其转换后的形式 打印输出
+			}
+		}
+		cout << endl;
+	}
+}
+建立转换映射
+map<string, string> buildMap(ifstream &map_file)
+{
+	map<string, string> trans_map;
+	string key;      //要转化的单词
+	string value;    //替换后的内容
+	while (map_file >> key && getline(map_file, value))
+	{
+		if (value.size() > 1)   //检测是否有转化规则
+			trans_map[key] = value.substr(1); //跳过前导空格
+		else
+			throw runtime_error("no rule for " + key);
+	}
+	return trans_map;
+}
+trans_map中将保存着用来转换输入文本的规则  由map_file 生成
+
+生成转换文本
+const string & transform(const string &s, const map<string, string> &m)
+{
+	auto map_it = m.find(s);
+	if (map_it != m.cend())
+		return map_it->second;
+	else
+		return s;
+}
+
+
+无序容器
+这些容器不是使用比较运算符来组织的 而是使用一个哈希函数 和关键字 == 运算符
+在关键字类型的元素没有明显的序关系的情况下 无序容器是非常有用的
+
+unordered_map<string, size_t> word_count;  统计出现次数 但单词不会按照字典序排列
+string word;
+while (cin >> word)
+	++word_count[word];
+for (const auto &w : word_count)
+{
+	count << w.first << "occurs" << w.second
+	  << ((w.second > 1) ? "times:" : "time") << endl;
+}
+
+无序容器在存储上组织为一组桶
+容器将具有特定哈希值的所有元素都保存在相同的桶中
+如果容器允许重复关键字 所有具有相同关键字的元素也会在同一个桶中
+因此无序容器的性能依赖于哈希函数的质量 和桶的数量和大小
+
+桶接口
+c.bucket_count()
+c.max_bucket_count()
+c.bucket_size(n)   第n个桶中有多少元素
+c.bucket(k)        关键字k在哪个桶中
+桶迭代
+local_iterator       可以访问桶中元素的迭代器类型
+const_local_iterator
+c.begin(n), c.end(n)  桶n的首元素迭代器 和尾后迭代器
+c.cbegin(n), c.cend(n)
+哈希策略
+c.load_factor()   每个桶的平均元素数量 返回float值
+c.max_load_factor()
+c.rehash(n)  重组存储
+c.reserve(n) 重组存储
+
+我们不能直接定义关键字类型为 自定义类类型 的无序容器
+为了使用 Sales_data用作关键字 我们需要提供函数来代替==运算符和哈希值计算函数
+size_t hasher(const, Sales_data &sd)
+{
+	return hash<string>()(sd.isbn());	
+}
+bool eqOp (const Sales_data &lhs, const Sales_data &rhs)
+{
+	return lhs.isbn() == rhs.isbn();
+}
+
+using SD_multiset = unordered_multiset<Sales_data, decltype(hasher)*, decltype(eqOp)*>;
+参数是桶大小， 哈希函数指针 和相等性判断运算符指针
+SD_multiset bookstore(42, hasher, eqOp);
+
+unordered_set<Foo, decltype(FooHash)*> fooSet(10, FooHash);
+使用 FooHash 生成哈希值 Foo必须有==运算符
+
+
+####### 第十二章 动态内存 #######
+
+除了静态内存和栈内存 每个程序还拥有一个内存池 这部分内存被称为自由空间 或 堆
+
+智能指针
+智能指针的行为类似常规指针 重要的区别是它负责自动释放所指向的对象
+shared_ptr  允许多个指针指向同一个对象
+unique_ptr  独占所指向的对象
+weak_ptr 伴随类 弱引用指向shared_ptr 所管理的对象
+
+shared_ptr<string> p1;    指向string
+shared_ptr<list<int>> p2; 指向int的list
+
+if (p1 && p1->empty())  如果p1不为空 检测它是否指向一个空string
+{
+	*p1 = "hi";  如果p1指向一个空string 解引用p1 将一个新值赋予string
+}
+
+make_shared函数
+shared_ptr<int> p3 = make_shared<int>(42);     指向一个值为42的int的shared_ptr
+shared_ptr<string> p4 = make_shared<string>(10, '9');  指向一个值为9999999999的string
+shared_ptr<int> p5 = make_shared<int>();       指向一个值初始化的int 即 值为0
+
+调用make_shared<string> 时传递的参数必须与string的某个构造函数相匹配
+
+auto p6 = make_shared<vector<string>>(); p6指向一个动态分配的空vector<string>
+
+shared_ptr的拷贝和赋值
+auto p = make_shared<int>(42);  p指向的对象只有p一个引用者
+auto q(p);   p和q指向相同的对象 此对象有两个引用者
+
+我们可以认为每个shared_ptr都有一个关联的计数器 称为引用计数
+一旦一个shared_ptr的计数器为0 它会自动释放自己所管理的对象
+auto r = make_shared<int>(42); r 指向 的int只有一个引用值
+r = q; 给r赋值 令他指向另一个地址
+       递增q指向的对象的引用计数
+       递减r原来指向的对象的引用计数
+       r原来指向的对象已经没有引用者 会自动释放
+
+shared_ptr自动销毁所管理的对象 还会自动释放相关联的内存
+shared_ptr的析构函数会递减它所指对象的引用计数 如果引用计数变为0 析构函数会销毁对象 并释放它的内存
+
+shared_ptr<Foo> factory(T arg)
+{
+	//处理arg
+	//shared_ptr负责释放内存
+	return make_shared<Foo>(arg);
+}
+factory 返回一个 shared_ptr 指向一个动态分配的对象
+
+void use_factory(T arg)
+{
+	shared_ptr<Foo> p = factory(arg);
+	//使用p
+}//p离开了作用域 它指向的内存会被自动释放
+
+
+void use_factory(T arg)
+{
+	shared_ptr<Foo> p = factory(arg);
+	//使用p
+	return p; //当我们返回p时 引用计数进行了递增操作
+}//p离开了作用域 但它指向的内存不会被自动释放
+p被销毁后 指向的内存还有其他的使用者
+如果将share_ptr存放在一个容器中 而后不再需要全部元素 而只使用其中一部分 要记住用erase删除不再需要的那些元素
+
+
+使用了动态生存期的资源 的类
+程序使用动态内存出于以下三种原因之一
+1.程序不知道自己需要使用多少对象
+2.程序不知道所需对象的准确类型
+3.程序需要在多个对象间共享数据
+
+容器类是出于第一种原因使用动态内存的例子
