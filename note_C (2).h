@@ -3943,21 +3943,22 @@ TextQuery::TextQuery(ifstream &is): file(new vector<string>)
 	while (getline(is, text))        文件的每一行
 	{
 		file->push_back(text);       保存此行文本
-		int n = file->size() - 1;    当前行号
-		istringstream line(text);    将行文本 分解为单词
+		int n = file->size() - 1;    当前行号   每插入一行文字 vector大小加1
+ 		istringstream line(text);    将行文本 分解为单词
 		string word;
 		while (line >> word)         对行中每个单词
 		{                            如果单词不再wm中 以之为下标在wm中添加一项
 			auto &lines = wm[word];  lines是一个 shared_ptr
 			if (!lines)              第一次遇到这个单词
-			{
-				lines.reset(new set<line_no>);  分配一个新的set line_no 是 size_type
-			}
+			{                                   
+				lines.reset(new set<line_no>);  分配一个新的set lines指向它 line_no 是 size_type
+			}                                   
 			lines->insert(n);        将此行号插入set中
 		}
 	}
 }
 如果给定单词在同一行中出现多次 对insert的调用什么都不会做
+最终 wm 为  <全体文本中的每个单词, 每个单词行号的set>
 
 QueryResult类
 class QueryResult
