@@ -3631,3 +3631,375 @@ if (!p.unique())
 }
 *p += newVal; 现在我们知道自己是唯一的用户 可以改变对象的值
 
+智能指针和异常
+一个简单的确保资源被释放的方法是使用智能指针
+void f()
+{
+	shared_ptr<int> sp(new int(42));
+	//分配一个对象 这段代码抛出一个异常 且在f中未被捕获
+}//在函数结束时 shared_ptr自动释放内存
+
+void f()
+{
+	int *ip - new int(42); //动态分配一个新对象
+	//这段代码抛出一个异常 且在f中未被捕获 
+	delete ip;    //在推出之前释放内存
+}
+如果在 new 和 delete之间 发生了异常 且在f中未被捕获 则内存永远不会被释放了
+
+智能指针和哑类
+
+struct destination;
+struct connection;
+connection connect(destination*);
+void disconnect(connection);
+void f(destination &d)
+{
+	connection c = connect(&d);
+	//使用连接 使用完之后要记得关闭它
+	//如果我们在f推出前 忘记调用disconnect 就无法关闭c
+}
+如果connection 有一个析构函数 就可以在f结束时 由析构函数自动关闭连接
+但是connection没有析构函数 
+使用 shared_ptr 来保证connection被正确关闭 是一种有效的方法
+
+使用自己的释放动作
+删除器函数能够完成对 shared_ptr 中保存的指针进行释放的操作
+void end_connection(connection *p) { disconnect(*p); }
+void f(destination &d)
+{
+	connection c = connect(&d);
+	shared_ptr<connection> p(&c, end_connection);
+	//使用连接
+	//当f退出时 connect会被正确关闭
+}
+当p被销毁 他不会调用对自己保存的指针执行delete 而是调用 end_connection
+接下来 end_connection 会调用 disconnect
+
+正确使用智能指针：
+1.不使用相同的内置指针值初始化 多个智能指针
+2.不 delete get()返回的指针
+3.不使用 get() 初始化或reset另一个智能指针
+4.如果使用get() 返回的指针 最后一个对应的智能指针销毁后 你的指针变得无效
+5.如果你使用智能指针管理的资源不是new 分配的内存 记得传递给它一个删除器
+
+
+unique_ptr
+一个unique_ptr 拥有它所指向的对象 某个时刻只能有一个unique_ptr指向一个给定对象
+与 shared_ptr 不同 没有类似 make_shared 的标准库函数 返回一个 unique_ptr
+unique_ptr<double> p1; //可以指向一个double的unique_ptr
+unique_ptr<int> p2(new int(42));  //p2 指向一个值为42的int
+初始化unique_ptr 必须采用直接初始化方式
+由于unique_ptr 拥有指向它的对象 因此unique_ptr不支持普通拷贝或赋值操作
+
+unique_ptr<string> p1(new string("Stegosaurus"));
+unique_ptr<string> p2(p1);   错误 unique_ptr不支持 拷贝
+unique_ptr<string> p3;
+p3 = p2;                     错误 unique_ptr不支持 赋值
+
+unique_ptr<string> p2(p1.release());  将所有权从p1转移给p2 release将p1 置为空
+unique_ptr<string> p3(new string("Trex")); 
+p2.reset(p3.release()); 将所有权从p3转移给p2 reset 释放了p2原本指向的内存 将p3对指针的所有权转移给p2 并将p3置空
+release成员返回 unique_ptr 当前保护的指针并将其置为空 p2 被初始化为 p1 原来保存的指针 p1被置为空
+
+p2.release(); 错误 p2不会释放内存 而且我们丢失了指针
+auto p = p2.release();  正确 但我们必须记得 delete(p)
+
+传递unique_ptr 参数 和 返回 unique_ptr
+不能拷贝unique_ptr 的规则有一个例外 我们可以拷贝和赋值一个将要被销毁的 unique_ptr
+最常见的是从函数返回一个unique_ptr
+unique_ptr<int> clone(int p)
+{
+	return unique_ptr<int>(new int(p));
+}
+还可以返回一个局部对象的拷贝
+unique_ptr<int> clone(int p)
+{
+	unique_ptr<int> ret(new int(p));
+	//...
+	return ret;
+}
+
+向unique传递删除器
+unique_ptr<objT, delT> p(new objT, fcn);
+
+void f(destination &d)
+{
+	connection c = connect(&d);
+	unique_ptr<connection, decltype(end_connection)*> p(&c, end_connection);
+}
+
+
+weak_ptr
+weak_ptr是一种不控制对象生存期的智能指针 它指向一个shared_ptr管理的对象
+将 weak_ptr 绑定到 shared_ptr 不会改变shared_ptr 的计数
+一旦最后一个指向对象shared_ptr被销毁 对象就会被释放 即使有weak_ptr 指向对象 对象也会被释放
+
+创建 weak_ptr 要用一个 shared_ptr 初始化它
+auto p = make_shared<int>(42);
+weak_ptr<int> wp(p); wp弱共享p p的引用计数未改变
+
+对象可能不存在  我们不能使用weak_ptr 直接访问对象 必须调用lock
+if (shared_ptr<int> np = wp.lock())  //如果np 不为空则条件成立
+{
+	//在if中 np 与 p 共享对象
+}
+
+class StrBlobPtr
+{
+public:
+	StrBlobPtr(): curr(0) { }
+	StrBlobPtr(StrBlob &a, size_t sz = 0): wptr(a.data), curr(sz) { }
+	std::string& deref() const;
+	StrBlobPtr& incr();  //前缀递增
+private:
+	std::shared_ptr<std::vector<std::string>> check(std::size_t, const std::string&) const;
+	std::weak_ptr<std::vector<std::string>> wptr; //保存weak_ptr 意味着底层vector可能被销毁
+	std::size_t curr; //在数组中的当前位置
+};
+
+我们不能将 StrBlobPtr绑定到一个 const StrBlob 对象 这个限制是由于构造函数接受一个非const StrBlob对象的引用导致的
+
+std::shared_ptr<std::vector<std::string>> StrBlobPtr::check(std::size_t i, const std::string &msg) const
+{
+	auto ret = wptr.lock();  //vector 还存在么
+	if (!ret) 
+	{
+		throw std::runtime_error("unbound StrBlobPtr");
+	}
+	if (i >= ret->size())
+	{
+		throw std::out_of_range(msg);
+	}
+	return ret;  否则返回指向vector的 shared_ptr
+}
+
+指针操作 定义deref 和 incr 用来 解引用 和 递增 StrBlobPtr
+std::string& StrBlobPtr::deref() const
+{
+	auto p = check(curr, "dereference past end");
+	return (*p)[curr];
+}
+如果check 成功 p就是一个 shared_ptr 指向 StrBlobPtr 所指向的 vector
+表达式 (*p)[curr] 解引用 shared_ptr 来获得vector 使用下标提取返回curr位置上的元素
+
+StrBlobPtr& StrBlobPtr::incr()
+{
+	check(curr, "increment past end of StrBlobPtr");
+	++curr;
+	return *this;
+}
+返回递增后的对象的引用
+为了访问data成员 我们的指针类必须声明为 StrBlob 的friend
+class StrBlobPtr;
+class StrBlob
+{
+	friend class StrBlobPtr;
+	//返回指向首元素和尾后元素的 StrBlobPtr
+	StrBlobPtr begin() { return StrBlobPtr(*this); }
+	StrBlobPtr end()
+	{
+		auto ret = StrBlobPtr(*this, data->size());
+		return ret;
+	}
+};
+
+
+动态数组
+使用容器的类可以使用默认版本的拷贝 赋值 和析构 操作
+分配动态数组的类 则必须定义自己版本的操作 在拷贝 复制 以及销毁对象是管理所关联的内存
+int *pia = new int[get_size()]; pia 指向第一个 int
+
+typedef int arrT[42];  arrT表示42个int的数组类型
+int *p = new arrT;     分配一个42个int的数组 p指向第一个int
+
+new分配一个int数组 并返回指向第一个int的指针 即使这段代码中没有方括号
+
+分配一个数组会得到一个元素类型的指针
+由于分配的内存并不是一个数组类型 因此不能对动态数组调用 begin 和 end 也不能用范围for处理动态数组中的元素
+我们所说的动态数组 不是 数组类型
+
+int *pia = new int[10];        10个未初始化的int
+int *pia2 = new int[10]();     10个值初始化为0的int
+int *psa = new string[10];     10个空string
+int *psa2 = new string[10]();  10个空string
+
+int *pia3 = new int[10]{0,1,2,3,4,5,6,7,8,9};
+string *pia3 = new string[10]{"a", "an", "the", string(3,'x')};  前四个给定的初始化器初始化 剩余的进行值初始化
+
+动态分配一个空数组是合法的
+可以用任意表达式来确定要分配的对象的数目
+size_t n = get_size();
+int *p = new int[n];
+for (int *q = p; q != p + n; ++q)
+{
+	//处理数组
+}
+但是当n等于0 调用 new[0] 是合法的
+char arr[0];    //错误 不能定义长度为0的数组
+char *cp = new char[0];   //正确 但cp不能解引用
+
+释放动态数组
+delete p;    p必须指向一个动态分配的对象或为空
+delete [] pa;  pa必须指向一个动态分配的数组或为空  数组逆序销毁
+
+智能指针和动态数组
+用一个unique_ptr管理动态数组
+unique_ptr<int[]> up(new int[10]);  up指向一个包含了10个未初始化int的数组
+up.release(); 自动用delete[] 销毁其指针
+
+for (size_t i = 0; i != 10; ++i)
+{
+	up[i] = i;  //为每个元素赋予新值
+}
+
+shared_ptr 不能直接管理动态数组 如果希望使用 shared_ptr 管理一个动态数组
+必须提供自己定义的删除器
+shared_ptr<int> sp(new int[10], [](int *p){ delete [] p; });
+sp.reset(); //使用我们提供的lambda 释放数组 它使用 delete[]
+
+for (size_t i = 0; i != 10; i++)
+{
+	*(sp.get() + i) = i;
+}
+shared_ptr未定义下标运算符 而且智能指针类型不支持指针算术运算 因此为了访问数组中的元素
+必须使用get获取一个内置指针 然后用它来访问数组元素
+
+
+allocator类
+
+一般将 内存分配和对象构造组合在一起 可能会导致不必要的浪费
+string *const p = new string[n];  构造n个空的 string
+string s;
+string *q = p;                    q指向第一个 string
+while (cin >> s && q != p + n)
+	*q++ = s;                    赋予*q一个新值
+const size_t size = q - p;     计算我们读取了多少个string
+//使用数组
+delete [] p;  p 指向一个数组 记得用delete[] 来释放
+
+每个使用到的元素都被赋值两次 第一次在默认初始化时 第二次是在赋值时
+
+allocator<string> alloc;             可以分配string的allocator对象
+auto const p = alloc.allocate(n);    分配n个 未初始化的string
+这个allocate 调用为n个string 分配了内存
+
+allocate 分配未构造的内存
+
+auto q = p;                  q指向最后构造的元素之后的位置
+alloc.construct(q++);        *q为空字符串
+alloc.construct(q++, 10, 'c'); *q 为cccccccccc
+alloc.construct(q++, "hi");    *q 为hi!
+
+construct成员函数 接受一个指针 和 零个或多个额外参数 在给定位置构造一个元素
+
+cout << *p << endl;  正确 使用string 的输出运算符
+cout << *q << endl;  灾难 q指向未构造的内存
+
+while (q != p)
+	alloc.destroy(--q); 释放我们真正构造的string
+
+我们只对真正构造了的元素进行 destroy 操作
+
+释放内存 alloc.deallocate(p, n);
+拷贝和填充未初始化内存的算法
+auto p = alloc.allocate(vi.size() * 2);  分配比vi中元素所占空间大一倍的动态内存
+auto q = uninitialized_copy(vi.begin(), vi.end(), p); 通过拷贝vi中的元素来构造p开始的元素
+uninitialized_fill_n(q, vi.size(), 42);  将剩余元素初始化为42
+
+uninitialized_copy 返回
+
+使用标准库：文本查询程序
+
+void runQueries(ifstream &infile)
+{
+	TextQuery tq(infile); //保存文件到vector中 并建立单词到所在行号的map
+	//与用户交互 提示用户输入要查询的单词 完成查询并打印结果
+	while (true)
+	{
+		cout << "enter word to look for, or q to quit: ";
+		string s;
+		if (!(cin >> s) || s == "q") break;  
+		print(cout, tq.query(s)) << endl;
+	}
+}
+
+class QueryResult;  为了定义query的返回类型
+class TextQuery
+{
+public:
+	using line_no = std::vector<std::string>::size_type;
+	TextQuery(std::ifstream&);
+	QueryResult query(const std::string&) const;
+private:
+	std::shared_ptr<std::vector<std::string>> file;  输入文件
+	std::map<std::string, std::shared_ptr<std::set<line_no>>> wm;  每个单词到它所在行号的集合的映射
+}
+
+TextQuery构造函数
+TextQuery::TextQuery(ifstream &is): file(new vector<string>)
+{
+	string text;
+	while (getline(is, text))        文件的每一行
+	{
+		file->push_back(text);       保存此行文本
+		int n = file->size() - 1;    当前行号
+		istringstream line(text);    将行文本 分解为单词
+		string word;
+		while (line >> word)         对行中每个单词
+		{                            如果单词不再wm中 以之为下标在wm中添加一项
+			auto &lines = wm[word];  lines是一个 shared_ptr
+			if (!lines)              第一次遇到这个单词
+			{
+				lines.reset(new set<line_no>);  分配一个新的set line_no 是 size_type
+			}
+			lines->insert(n);        将此行号插入set中
+		}
+	}
+}
+如果给定单词在同一行中出现多次 对insert的调用什么都不会做
+
+QueryResult类
+class QueryResult
+{
+	friend std::ostream& print(std::ostream&, const QueryResult&);
+public:
+	QueryResult(std::string s, 
+				std::shared_ptr<std::set<line_no>> p,
+				std::shared_ptr<std::vector<std::string>> f):
+		sought(s), lines(p), file(f) { }
+private:
+	std::string sought;   查询单词
+	std::shared_ptr<std::set<line_no>> lines;  出现的行号
+	std::shared_ptr<std::vector<std::string>> file;  输入文件
+};
+
+QueryResult TextQuery::query(const string &sought) const
+{
+	static shared_ptr<set<line_no>> nodata(new set<line_no>);
+	auto loc = wm.find(sought);
+	if (loc == wm.end())
+	{
+		return QueryResult(sought, nodata, file);  未找到
+	}
+	else
+	{
+		return QueryResult(sought, loc->second, file);
+	}
+}
+
+ostream &print(ostream& os, const QueryResult &qr)
+{
+	os << qr.sought << "occurs" << qr.lines->size() << " "
+	 << make_plural(qr.lines->size(), "time", "s") << endl;
+	 for (auto num : *qr.lines)
+	 {
+	 	os << "\t (line" << num + 1 << ") "
+	 	<< *(qr.file->begin() + num) << endl;
+	 }
+	 return os;
+}
+
+
+
+####### 第十三章 拷贝控制 #######
