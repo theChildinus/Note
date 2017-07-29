@@ -4004,3 +4004,82 @@ ostream &print(ostream& os, const QueryResult &qr)
 
 
 ####### 第十三章 拷贝控制 #######
+
+
+拷贝和移动构造函数 定义了当用同类型的另一个对象初始化 本对象时 做什么
+拷贝和移动运算符 定义了将一个对象赋予同类型的另一个对象时 做什么
+析构函数 定义了当此类型对象销毁时 做什么
+我们称这些操作为 拷贝控制操作
+
+拷贝构造函数 
+class Foo
+{
+public:
+	Foo();              默认构造函数
+	Foo(const Foo&);    拷贝构造函数
+};
+一个构造函数的第一个参数是 自身类类型的引用 且任何额外参数都有默认值 则此构造函数是 拷贝构造函数
+
+
+合成的拷贝构造函数会将其参数成员逐个拷贝到正在创建的对象中
+类类型成员 使用其拷贝构造函数来拷贝
+内置类型成员 直接拷贝
+
+class Sales_data
+{
+public:
+	Sales_data(const Sales_data&);  与合成的拷贝构造函数 等价的拷贝构造函数声明
+private:
+	std::string bookNo;
+	int units_sold = 0;
+	double revenue = 0.0;
+};
+Sales_data::Sales_data(const Sales_data *orig): 
+			bookNo(orig.bookNo), units_sold(orig.units_sold), revenue(orig.revenue) { }
+
+
+string dots(10, '.');     直接初始化
+string s(dots);           直接初始化
+string s2 = dots;         拷贝初始化
+string null_book = "9-999-99999-9";    拷贝初始化
+string nines = string(100, '9');       拷贝初始化
+
+拷贝初始化依赖 拷贝构造函数或移动构造函数 完成的
+拷贝构造函数不仅在用= 定义变量时发生
+1.将一个对象作为实参传递给一个 非引用类型的形参
+2.从一个返回类型为 非引用类型的函数 返回一个对象
+3.用花括号列表初始化 一个数组中的元素 或 一个聚合类中的成员
+insert或push成员 容器会对其元素进行拷贝初始化
+emplace成员 创建的元素都是直接初始化
+
+拷贝构造函数被用来初始化非引用类类型参数 这一特性解释了为什么拷贝构造函数自己的参数必须是引用类型
+如果其参数不是引用类型 则调用永远不会成功
+
+
+拷贝赋值运算符
+Sales_data trans, accum;
+trans = accum;  使用Sales_data的拷贝赋值运算符
+
+与拷贝构造函数一样 如果类未定义自己的拷贝赋值运算符 编译器会为它合成一个
+
+赋值运算符通常 应该返回一个指向其左侧运算对象的引用
+class Foo
+{
+public:
+	Foo& operator = (const Foo&);
+};
+
+Sales_data& Sales_data::operator=(const Sales_data &rhs)
+{
+	bookNo = rhs.bookNo;
+	units_sold = rhs.units_sold;
+	revenue = rhs.revenue;
+	return *this;
+}
+
+析构函数
+构造函数初始化对象的非static数据成员
+析构函数释放对象使用的资源 并销毁对象的非static数据成员
+
+隐式销毁一个内置指针类型的成员不会delete它所指向的对象
+智能指针是类类型 所以具有析构函数
