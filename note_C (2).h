@@ -4083,3 +4083,242 @@ Sales_data& Sales_data::operator=(const Sales_data &rhs)
 
 隐式销毁一个内置指针类型的成员不会delete它所指向的对象
 智能指针是类类型 所以具有析构函数
+
+什么时候会调用析构函数 
+1.变量在离开其作用域时被销毁
+2.当一个对象被销毁时 其成员被销毁
+3.容器 无论是标准库容器还是数组 被销毁时 其元素被销毁
+4.对于动态分配的对象 当对指向它的指针应用delete运算符时 被销毁
+5.对于临时对象 当创建它的完整表达式结束时被销毁
+
+{ 新作用域
+Sales_data *p = new Sales_data;        p是一个内置指针
+auto p2 = make_shared<Sales_data>();   p2是一个 shared_ptr
+Sales_data item(*p);                   拷贝构造函数将*p拷贝到item中
+vector<Sales_data> vec;                局部对象
+vec.push_back(*p2);                    拷贝p2指向对象
+delete p;                              对p指向的对象执行析构函数
+}
+退出局部作用域 对 item p2 和vec调用析构函数
+销毁p2会递减其引用计数 如果引用计数为0 对象被释放 
+销毁vec会销毁它的元素
+
+当指向一个对象的引用或指针 离开作用域时 析构函数不会执行
+
+当一个类未定义自己的析构函数时 编译器会为它定义一个合成析构函数
+class Sales_data
+{
+	~Sales_data() { }
+}
+等于 Sales_data的合成构造函数
+析构函数体 自身并不直接销毁成员
+成员是在析构函数体之后隐含的 析构阶段中被销毁的
+析构函数体 是作为成员销毁步骤之外 的另一部分而进行的
+
+三五法则
+三个基本操作控制类的拷贝操作
+拷贝构造函数
+拷贝赋值运算符
+析构函数
+新标准下：一个类还可以定义 一个移动构造函数 移动赋值运算符
+
+需要析构函数的类 也需要拷贝和赋值的操作
+如果一个类需要一个析构函数 我们几乎可以肯定 它需要一个拷贝构造函数 和一个 拷贝赋值运算符
+
+class HasPtr
+{
+public:
+	HasPtr(const std::string &s = std::string()): ps(new std::string(s)), i(0) { }
+	~HasPtr() { delete ps; }
+	错误 HasPtr需要一个拷贝构造函数 和一个 拷贝赋值运算符
+	//其他成员的定义 如前
+};
+这个版本的类使用了合成拷贝构造函数 和 合成拷贝赋值运算符
+这些函数简单拷贝指针成员 这意味着 多个HasPtr 对象可以指向相同的内存
+
+HasPtr f(HasPtr hp)    HasPtr 是传值参数 所以被拷贝
+{
+	HasPtr ret = hp;
+	return ret;       ret和hp被销毁
+}
+f 返回时 hp 和ret 都被销毁 在两个对象上都会调用HasPtr的析构函数
+这两个对象包含相同的指针值 代码会导致delete两次
+HasPtr p("some values");
+f(p);      当f结束时 p.ps 指向的内存被释放
+HasPtr q(p);  现在p和q都指向无效内存！！
+
+需要拷贝操作的类 也需要赋值操作 反之亦然
+
+使用 =default
+我们可以通过将拷贝控制成员定义为=default 来显式的要求编译器 生成合成的版本
+class Sales_data
+{
+public:
+	Sales_data() = default;
+	Sales_data(const Sales_data&) = default;
+	Sales_data& operator=(const Sales_data &);
+	~Sales_data() = default;
+};
+Sales_data& Sales_data::operator=(const Sales_data&) = default;
+
+类内用=default 修饰成员的声明 合成的函数将隐式的 声明为内联
+如果我们不希望合成的成员是内联 类外=default
+
+阻止拷贝
+新标准下 我们可以通过将拷贝构造函数 和 拷贝赋值运算符 定义为 删除的函数 来阻止拷贝
+struct NoCopy
+{
+	NoCopy() = default;     使用合成的默认构造函数
+	NoCopy(const NoCopy&) = delete;   阻止拷贝  
+	NoCopy &operator=(const NoCopy&) = delete;  阻止赋值
+	~NoCopy() = default;    使用合成的析构函数
+};
+
+=delete 出现在函数第一次声明的时候 
+我们可以对任何函数指定 =delete
+我们只能对编译器可能合成的默认构造函数 或 拷贝控制成员 使用 =default
+
+我们不能删除析构函数
+
+struct NoDtor
+{
+	NoDtor() = default;  使用合成默认构造函数
+	~NoDtor() = delete;  我们不能销毁NoDtor 类型的对象
+};
+
+NoDtor nd;    错误 NoDtor 的析构函数是删除的
+NoDtor *p = new NoDtor();   正确 但我们不能 delete p
+delete p;   错误 NoDtor 的析构函数是删除的
+
+对于析构函数已删除的类型 不能定义该类型的变量或者释放 该类型动态分配对象的指针
+
+如果一个类有数据成员 不能默认构造 拷贝 复制和销毁 则对应的成员函数将被定义为删除的
+本质上 当不可能 拷贝 赋值 或者销毁类的成员时 类的合成拷贝控制成员就被定义为删除的
+
+private拷贝控制
+新标准之前 类是通过将其拷贝构造函数 和拷贝赋值运算符 声明为private 的来阻止拷贝
+
+class PrivateCopy
+{
+	PrivateCopy(const PrivateCopy&);    无访问说明符 默认private
+	PrivateCopy &operator=(const PrivateCopy&);
+public:
+	PrivateCopy() = default;  使用合成的默认构造函数
+	~PrivateCopy();           用户可以定义此类型的对象 但无法拷贝他们
+};
+
+建议使用前者 delete的方式
+
+拷贝控制和资源管理
+类的行为像一个值   意味着它应该也有自己的状态 当我们拷贝一个像值 的对象时 副本和原对象时完全独立的
+类的行为像一个指针 共享状态 当我们拷贝一个这种类 的对象时 副本和原对象使用相同的底层数据
+
+行为像值的类
+
+类值版本的 HasPtr 需要
+1.定义一个拷贝构造函数 完成string的拷贝 而不是拷贝指针
+2.定义一个析构函数 释放string 
+3.定义一个拷贝赋值运算符 来释放对象当前的string 并从右侧运算对象拷贝string
+class HasPtr
+{
+public:
+	HasPtr(const std::string &s = std::string()): ps(new std::string(s)), i(0) { }
+	HasPtr(const HasPtr &p): ps(new std::string(*p.ps)), i(p.i) { }
+	HasPtr& operator = (const HasPtr &);
+	~hasptr() { delete ps; }
+private:
+	std::string *ps;
+	int i;
+};
+类值 拷贝赋值运算符
+HasPtr& HasPtr::operator=(const HasPtr &rhs)
+{
+	auto newp = new string(*rhs.ps);  拷贝底层string
+	delete ps;     释放旧内存
+	ps = newp;     右侧运算对象拷贝数据到本对象
+	i = rhs.i;
+	return *this;  返回本对象
+}
+
+编写一个赋值运算符时 一个好的模式是 先将右侧 运算对象拷贝到一个 局部临时对象中
+当拷贝完成后 销毁左侧运算对象的现有成员就是安全的了 一旦左侧运算对象的资源被销毁
+就剩下数据从临时对象 拷贝到左侧运算对象的成员中了
+
+
+定义行为像指针的类
+我们需要为其定义拷贝构造函数和拷贝赋值运算符 来拷贝指针成员本身 而不是它指向的string
+
+自定义引用计数
+解决计数器同步的问题 是将计数器保存在动态内存中
+当创建一个对象时 我们也分配一个新的计数器
+当拷贝或赋值对象时 我们拷贝指向计数器的指针 使用这种方式 副本和原对象都会指向相同的计数器
+class HasPtr
+{
+public:
+	HasPtr(const std::string &s = std::string()): ps(new std::string(s)), i(0), use(new std::size_t(1)) { }
+	HasPtr(const HasPtr &p): ps(p.ps), i(p.i), use(p.use) { ++*use; }
+	HasPtr& operator=(const HasPtr&);
+	~HasPtr();
+private:
+	std::string *ps;
+	int i;
+	std::size_t *use;  用来记录有多少个对象共享 *ps成员
+};
+
+
+HasPtr::~HasPtr()
+{
+	if (--*use == 0)
+	{
+		delete ps;   释放string内存
+		delete use;  释放计数器内存
+	}
+}
+
+HasPtr& HasPtr::operator=(const HasPtr &rhs)
+{
+	++*rhs.use;
+	if (--*use == 0)
+	{
+		delete ps;
+		delete use;
+	}
+	ps = rhs.ps;
+	i = rhs.i;
+	use = rhs.use;
+	return *this;	
+}
+
+
+交换操作
+HasPtr temp = v1;
+v1 = v2;
+v2 = temp;
+理论上这些内存的分配都是不必要的 我们更希望 swap交换指针而不是 分配string的新副本
+string *temp = v1.ps;
+v1.ps = v2.ps;
+v2.ps = temp;
+
+编写我们自己的swap
+class HasPtr
+{
+	friend void swap(HasPtr&, HasPtr&);
+};
+inline void swap(HasPtr &lhs, HasPtr &rhs)
+{
+	using std::swap;
+	swap(lhs.ps, rhs.ps);
+	swap(lhs.i, rhs.i);
+}
+
+在赋值运算符中 使用swap
+拷贝并交换技术
+HasPtr& HasPtr::operator=(HasPtr rhs)
+{
+	swap(*this, rhs); 交换左侧运算对象和局部变量rhs的内容 rhs现在指向本对象曾经用过的内存
+	return *this;  rhs被销毁 从而delete了 rhs中的指针
+}
+rhs是按值传递 意味着 HasPtr的拷贝构造函数将右侧运算对象中的string拷贝到 rhs中
+swap之后 *this中的指针成员将指向新分配的string 即右侧运算对象中string的一个副本
+
+使用拷贝和交换的赋值运算符自动就是异常安全的 且能正确处理 自赋值
