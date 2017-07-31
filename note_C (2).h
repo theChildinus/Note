@@ -4592,6 +4592,8 @@ const int &r3 = i * 42; 正确 我们可以将一个const的引用绑定到一�
 int &&rr2 = i * 42;     正确 将rr2绑定到乘法结果上
 
 左值持久 右值短暂
+一个区分左值与右值的便捷方法是：看能不能对表达式取地址，如果能，则为左值，否则为右值
+
 变量是左值 因此我们不能将一个右值直接绑定到一个变量上 即使这个变量是右值引用类型也不行
 int &&rr1 = 42; 正确 字面常量是右值
 int &&rr2 = rr1;错误 表达式rr1是左值
@@ -4811,6 +4813,7 @@ retVal() = j;   错误 retVal返回一个右值
 i = retVal();   正确 我们可以将一个右值作为赋值操作的右侧运算对象
 
 引用限定符必须跟在const 限定符之后
+const限定符 指明了这个函数不会修改该类的任何成员数据的值 称为常量成员函数。
 
 重载和引用函数
 
@@ -4857,3 +4860,282 @@ public:
 
 ###### 第十四章 重载运算与类型转换 ######
 
+当一个重载的运算符是成员函数时，this绑定到左侧运算对象 成员运算符函数的
+参数数量比运算对象的数量少一个
+
+对于一个运算符函数来说 它或是类的成员 或 至少含有一个类类型的参数
+data1 + data2;				普通的表达式
+operator+(data1, data2);    等价的函数调用
+
+data1 += data2;             基于调用的表达式
+data1.operator+=(data2);    对成员运算符函数的等价调用
+
+将this绑定到data1 的地址 将data2作为实参传入了函数
+
+某些运算符不应该被重载
+通常情况下 不应该重载逗号 取地址 逻辑与 和逻辑或 运算符
+
+逻辑运算符 和 关系运算符 应该返回bool 
+算数运算符 应该返回一个类类型的值 赋值运算符和复合赋值运算符 则应该返回左侧运算对象的一个引用
+只有当操作的含义对于用户来说清晰明了时 才使用运算符
+
+赋值和 复合赋值运算符
+将运算符定义为成员函数还是 非成员函数？
+1.赋值 下标 调用 和成员访问箭头 必须是成员
+2.复合赋值运算符一般来说应该是成员 但并非必须
+3.改变对象状态的运算符或者与 给定类型密切相关的运算符如 递增 递减 解引用运算符 通常是成员
+4.具有对称性的运算符可以转换任意一端的运算对象 例如算数 相等性 关系和位运算 通常是普通的非成员函数
+
+string s = "world";
+string t = s + "!";   正确 我们能把一个const char*加到一个string对象中
+string u = "hi" + s;  如果+是string成员 则产生错误
+
+输入输出运算符
+ostream &operator <<(ostream &os, const Sales_data &item)
+{
+	os << item.isbn() << " " << item.units_sold << " "
+	 << item.revenue << " " << item.avg_price();
+
+	return os;
+}
+
+输出运算符尽量减少格式化操作
+通常输出运算符应该主要负责打印对象的内容而非控制格式 输出运算符不应该打印换行符
+
+输入输出运算符必须是非成员函数
+通常IO运算符需要读写类的非公有数据成员 IO运算符 一般被声明为友元
+
+istream &operator>>(istream &is, Sales_data &item)
+{
+	double price;
+	is >> item.bookNo >> item.units_sold >> price;
+	if (is)
+	{
+		item.revenue = item.units_sold * price;
+	}
+	else
+	{
+		item = Sales_data();  输入失败 对象被赋予默认的状态
+	}
+	return is;
+}
+
+输入运算符必须处理输入可能失败的情况 而输出运算符不需要
+当读取操作发生错误时 输入运算符应该负责从错误中恢复
+
+算数和关系运算符
+通常情况下 我们把算数和关系运算符定义成非成员函数以允许对左侧和右侧的运算对象进行转换
+应为这些运算符一般不需要改变运算对象的状态 所以形参都是常量的引用
+
+Sales_data operator+(const Sales_data &lhs, const Sales_data &rhs)
+{
+	Sales_data sum = lhs;
+	sum += rhs;
+	return sum;
+}
+
+如果类同时定义了算数运算符和相关的 复合赋值运算符 则通常情况下 应该使用复合赋值运算符实现算数运算符
+
+相等运算符
+bool operator==(const Sales_data &lhs, const Sales_data &rhs)
+{
+	return lhs.isbn() == rhs.isbn() &&
+		   lhs.units_sold == rhs.units_sold &&
+		   lhs.revenue == rhs.revenue;
+}
+bool operator!=(const Sales_data &lhs, const Sales_data &rhs)
+{
+	return !(lhs == rhs);
+}
+相等运算符 和 不相等运算符中的一个应该把工作委托给另外一个 这意味着其中一个运算符
+应该负责实际比较的工作
+如果某个类在逻辑上有相等性的含义 则该类应该定义operator== 这样做可以使用户更容易使用标准库算法来处理这个类
+
+关系运算符
+通常情况下关系运算符应该
+1.定义顺序关系 令其与关联容器中对关键字的要求一致
+2.如果类同时也含有==运算符的话 则定义一种关系令其与==保持一致 特别是 如果两个对象是!=的 那么
+  一个对象应该<另一个
+
+ Sales_data这个类 不存在一种逻辑可靠的<定义 这个类不定义<运算符也许更好
+
+ 如果存在唯一一种逻辑可靠的<定义则应该考虑为这个类定义<运算符 如果类同时还包含了==
+ 则当且仅当 <的定义 和 == 产生的结果一致时才定义<运算符
+
+ 
+赋值运算符
+vector<string> v;
+v = {"a", "an", "the"};
+
+class StrVec
+{
+public:
+	StrVec &operator=(std::initializer_list<std::string>);
+}
+
+StrVec &StrVec::operator=(initializer_list<string> il)
+{
+	auto data = alloc_n_copy(il.begin(), il.end());
+	free();                      销毁对象中的元素并释放内存
+	elements = data.first;       更新数据成员使其指向新成员
+	first_free = cap = data.second;
+	return *this;
+}
+
+我们可以重载赋值运算符 不论形参的类型是什么 赋值运算符 都必须定义为成员函数
+
+复合赋值运算符不非得是类的成员  不过我们还是倾向把包括复合赋值在内的所有赋值运算都定义在类的内部
+Sales_data& Sales_data::operator+=(const Sales_data &rhs)
+{
+	units_sold += rhs.units_sold;
+	revenue += rhs.revenue;
+	return *this;
+}
+
+这两类运算符 都应该返回左侧运算对象的引用
+
+下标运算符
+必须是类的成员
+下标运算符通常以所访问元素的引用作为返回值这样做的好处是下标可以出现在赋值运算符的任意一端
+进一步 我们最好同事定义下标运算符的 常量版本和非常量版本
+一个返回普通引用 另一个是类的常量成员并且返回常量引用
+class StrVec
+{
+public:
+	std::string& operator[](std::size_t n)
+	{
+		return elements[n];
+	}
+	const std::string& operator[](std::size_t n) const
+	{
+		return elements[n];
+	}
+private:
+	std::string *elements;
+};
+因为下标运算符返回的是 元素的引用 所以当StrVec是非常量时 我们可以给元素赋值
+而当我们对常量对象取下标时 不能为其赋值
+
+假设svec是一个StrVec对象
+const StrVec cvec = svec;
+
+如果svec中含有元素 对第一个元素运行string 的empty
+if (svec.size() && svec[0].empty())
+{
+	svec[0] = "zero";   正确 下标运算符返回string的引用
+	cvec[0] = "Zip";    错误  对cvec取下标返回的是常量引用
+}
+
+递增和递减运算符
+
+因为他们改变的正好是所操作对象的状态 所以建议将其设定为成员函数
+定义递增递减运算符 的类应该同事定义前置版本和后置版本
+
+class StrBlobPtr
+{
+public:
+	StrBlobPtr& operator++();   前置运算符
+	StrBlobPtr& operator--();
+	StrBlobPtr& operator++(int);后置运算符   int不被使用
+	StrBlobPtr& operator--(int);
+}
+
+StrBlobPtr& StrBlobPtr::operator++()
+{
+	check(curr, "increment past end of StrBlobPtr");
+	++curr;
+	return *this;
+}
+
+StrBlobPtr& StrBlobPtr::operator--()
+{
+	
+	--curr;
+	check(curr, "decrement past begin of StrBlobPtr");
+	return *this;
+}
+
+StrBlobPtr StrBlobPtr::operator++(int)
+{
+	StrBlobPtr ret = *this;  无需检测有效性
+	++*this;                 向前移动一个元素 前置++需要检测递增的有效性
+	return ret;
+}
+
+StrBlobPtr StrBlobPtr::operator--(int)
+{
+	StrBlobPtr ret = *this;
+	--*this;
+	return ret;
+}
+
+后置运算符 调用各自的前置版本来完成实际工作
+
+StrBlobPtr p(a1);  p指向a1中的vector
+p.operator++(0);   调用后置版本的operator++
+p.operator++();    调用前置版本的operator++
+
+成员访问运算符
+
+class StrBlobPtr
+{
+public:
+	std::string& operator*() const
+	{
+		auto p = check(curr, "dereference past end");
+		return (*p)[curr]; (*p)是对象所指的vector
+	}
+	std::string* operator->() const
+	{
+		return & this->operator*();
+	}
+};
+箭头运算符必须是类的成员 解引用运算符通常也是类的成员 尽管非必须
+
+StrBlob a1 = {"hi", "bye", "now"};
+StrBlobPtr p(a1);     p指向a1中的vector
+*p = "okay";          给a1的首元素赋值
+cout << p->size() << endl; 打印4
+cout << (*p).size() << endl;
+
+对箭头运算符返回值的限定
+重载的箭头运算符必须返回类的指针 或者自定义了箭头运算符的某个类 的对象
+
+函数调用运算符
+
+struct absInt
+{
+	int operator()(int val) const
+	{
+		return val < 0 ? -val : val;
+	}
+}
+这个类只定义了一种操作 函数调用运算符 它负责接受一个int 类型的实参 然后返回该实参的绝对值
+int i = -42;
+absInt absObj;      含有函数调用运算符的对象
+int ui = absObj(i); 将i传递给 absObj.operator()
+
+函数调用运算符必须是成员函数 一个类可以定义多个不同版本的调用运算符
+相互之间在参数数量和类型上有所区别
+
+如果类定义了调用运算符 则该类的对象称为 函数对象 
+含有状态的函数对象类
+
+class PrintString
+{
+pubilc:
+	PrintString(ostream &o = cout, char c = ' '): os(o), sep(c) { }
+	void operator() (const string &s) const { os << s << sep; }
+private:
+	ostream &os;   用于写入的目的流
+	char sep;      用于将不同输出隔开的字符
+};
+
+PrintString printer;  使用默认值 打印到cout
+printer(s);           在cout中打印s 后面跟一个空格
+PrintString errors(cerr, '\n');  
+errors(s);            在cerr中打印s 后面跟一个换行符
+
+函数对象常常作为泛型算法的实参 
+for_each(vs.begin(), vs.end(), PrintString(cerr, '\n'));
+for_each的第三个实参是类型 PrintString的一个临时对象 其中我们用cerr和换行符初始化了该对象
