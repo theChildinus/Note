@@ -3886,7 +3886,7 @@ auto const p = alloc.allocate(n);    分配n个 未初始化的string
 
 allocate 分配未构造的内存
 
-auto q = p;                  q指向最后构造的元素之后的位置
+auto q = p;                  
 alloc.construct(q++);        *q为空字符串
 alloc.construct(q++, 10, 'c'); *q 为cccccccccc
 alloc.construct(q++, "hi");    *q 为hi!
@@ -4322,3 +4322,538 @@ rhs是按值传递 意味着 HasPtr的拷贝构造函数将右侧运算对象中
 swap之后 *this中的指针成员将指向新分配的string 即右侧运算对象中string的一个副本
 
 使用拷贝和交换的赋值运算符自动就是异常安全的 且能正确处理 自赋值
+
+
+拷贝控制示例
+拷贝赋值运算符 通常执行拷贝构造函数和析构函数中也要做的工作  这种情况下 公共的工作应该放在private的工具函数中完成
+
+Message类
+class Message
+{
+	friend class Floder;
+public:
+	explicit Message(const std::string &str = ""): contents(str) { }  folders 被隐式初始化为空集合
+	Message(const Message&);                      拷贝构造函数
+	Message& operator=(const Message&);           拷贝赋值运算符
+	~Message();                                   析构函数
+
+	void save(Floder&);           从给定的Folder 集合中添加删除 本Message
+	void remove(Floder&);
+private:
+	std::string contents;                     实际的消息内容
+	std::set<Folder*> folders;                包含本Message的Floder
+
+	void add_to_Folders(const Message&);
+	void remove_from_Folders();
+};
+
+void Message::save(Floder &f)
+{
+	folders.insert(&f);
+	f.addMsg(this);
+}
+
+void Message::remove(Floder &f)
+{
+	folders.erase(&f);
+	f.remMsg(this);
+}
+
+void Message::add_to_Folders(const Message &m)
+{
+	for (auto f : m.folders)  对每个包含m的folders 向该Folder添加一个指向本Message的指针
+		f->addMsg(this);  
+}
+
+Message::Message(const Message &m): contents(m.contents), floders(m.folders)
+{
+	add_to_Folders(m);  将本消息添加到m的Floder中
+}
+
+void Message::remove_from_Folders()
+{
+	for (auto f : folders)    对folders中每个指针 从该floder中删除Message
+	{
+		f->remMsg(this);
+	}
+}
+
+Message::~Message()
+{
+	remove_from_Folders();
+}
+
+Message& Message::operator=(const Message &rhs)
+{
+	remove_from_Folders();
+	contents = rhs.contents;
+	folders = rhs.folders;
+	add_to_Folders(rhs);   将本message添加到那些Folder中
+	return *this;
+}
+add_to_Folders不能在 remove_from_Folders 之前 
+因为如果左侧和右侧是相同的Message 则会将此Message从它所在的所有Folder中删除
+
+void swap(Message &lhs, Message &rhs)
+{
+	using std::swap;
+	for (auto f : lhs.folders)
+		f->remMsg(&lhs);
+	for (auto f : rhs.foldres)
+		f->remMsg(&rhs);
+
+	swap(lhs.floders, rhs.floders);
+	swap(lhs.contents, rhs.contents);
+
+	for (auto f : lhs.folders)
+		f->addMsg(&lhs);
+	for (auto f : rhs.folders)
+		f->addMsg(&rhs);
+}
+
+Floder类
+class Floder
+{
+	friend void swap(Folder &, Folder &);
+	friend class Message;
+public:
+	Floder() = default;
+	Floder(const Floder&);
+	Floder& operator=(const Floder&);
+	~Floder();
+	void add_to_Message(const Folder&);
+	void remove_from_Message();
+private:
+	std::set<Message*> msgs;
+
+	void addMsg(Message &m) { msgs.insert(m); }
+	void remMsg(Message &m) { msgs.erase(m); }
+};
+
+void swap(Folder &lhs, Folder &rhs)
+{
+	using std::swap;
+	lhs.remove_from_Message();
+	rhs.remove_from_Message();
+
+	swap(lhs.msgs, rhs.msgs);
+
+	lhs.add_to_Message(lhs);
+	rhs.add_to_Message(rhs);
+}
+
+Folder::Folder(const Folder &f): msg(f.msg)
+{
+	add_to_Message(f);
+}
+
+Folder::~Floder()
+{
+	remove_from_Message();
+}
+
+void Folder::add_to_Message(const Folder &f)
+{
+	for (auto m : f.msgs)
+		m->save(this);
+}
+void Folder::remove_from_Message()
+{
+	for (auto m : msgs)
+		m->remove(this);
+}
+
+Folder &Folder::operator=(const Folder &rhs)
+{
+	remove_from_Message();
+	msg = rhs.msg();
+	add_to_Message();
+	return *this;
+}
+
+动态内存管理类
+StrVec类  实现标准库vector类的简化版本
+class StrVec
+{
+public:
+	StrVec(): elements(nullptr), first_free(nullptr), cap(nullptr) { }
+	StrVec(const StrVec&);
+	StrVec &operator=(StrVec &);
+	~StrVec();
+
+	void push_back(const std::string&);
+	size_t size() const { return first_free - elements; }
+	size_t capacity() const { return cap - elements; }
+	std::string *begin() const { return elements; }
+	std::string &end() const { return first_free; }
+private:
+	static std::allocator<std::string> alloc;
+	void chk_n_alloc(){ if (size() == capacity()) reallocate(); }
+	工具函数 被 构造 赋值运算符 和析构函数所使用
+	std::pair<std::string*, std::string*> alloc_n_copy (const std::string*, const std::string*);
+	void free();                  销毁元素并释放内存
+	void reallocate();            获得更多内存并拷贝已有元素
+	std::string *elements;        数组首元素的指针
+	std::string *first_free;      数组元素第一个空闲元素的指针
+	std::string *cap;             指向数组尾后位置的指针
+};
+
+使用construct
+void StrVec::push_back(const string& s)
+{
+	chk_n_alloc();
+	alloc.construct(first_free++, s);
+}
+allocator分配内存时 内存是未构造的
+
+pair<string*, string*>StrVec::alloc_n_copy(const string *b, const string *e)
+{
+	auto data = alloc.allocate(e - b);  分配 e-b个空间 data 指向开始的位置
+	return {data, uninitialized_copy(b, e, data)};
+}
+返回的pair 的 first成员 指向分配的内存的开始位置 
+uninitialized_copy 的返回值	是一个指针 指向最后一个构造元素之后的位置
+
+free成员
+void StrVec::free()
+{
+	if (elements)
+	{
+		for (auto p = first_free; p != elements;  )
+		{
+			alloc.destroy(--p);
+		}
+		alloc.deallocate(elements, cap - elements);
+	}
+}
+
+拷贝控制成员
+StrVec::StrVec(const StrVec &s)
+{
+	auto newdata = alloc_n_copy(s.begin(), s.end());
+	elements = newdata.first;
+	first_free = newdata.second;
+}
+
+StrVec::~StrVec() { free(); }
+
+StrVec &StrVec::operator=(const StrVec &rhs)
+{
+	auto data = alloc_n_copy(rhs.copy(), rhs.end());
+	free();
+	elements = data.first;
+	first_free = cap = data.second;
+	return *this;
+}
+
+在重新分配内存的过程中 移动而不是拷贝元素
+编写 reallocate 应该 为一个新的更大的string数组分配内存
+在内存空间的前一部分构造对象 保存现有元素
+销毁原内存空间中的元素 并释放内存 
+
+拷贝这些string中的数据是多余的 如果能在重新分配内存空间时 避免分配和释放string的额外开销
+StrVec的性能会好很多
+
+移动构造函数和 std::move
+移动构造函数 通常是将资源从给定对象 移动 而不是拷贝到正在创建的对象
+
+reallocate 成员
+void StrVec::reallocate()
+{
+	auto newcapacity = size() ? 2 * size() : 1;
+	auto newdata = alloc.allocate(newcapacity);   分配新内存
+	auto dest = newdata;       指向新数组中下一个空闲位置
+	auto elem = elements;      指向旧数组中下一个元素
+	for (size_t i = 0; i != size(); ++i)
+	{
+		alloc.construct(dest++, std::move(*elem++));
+	}
+	free();    释放旧内存空间
+	更新数据结构  执行新元素
+	elements = newdata;
+	first_free = dest;
+	cap = elements + newcapacity;
+}
+
+对象移动
+移动而非拷贝对象会大幅提升性能
+标准库容器 string 和 shared_ptr 类即支持移动也支持拷贝
+IO类 和 unique_ptr 类可以移动 但是不能拷贝
+
+为了支持移动 引入 右值引用 就是必须绑定到右值的引用 通过 && 获得 
+右值引用 重要性质 只能绑定到一个将要销毁的对象
+常规引用 称之为左值引用 不能绑定到 要求转移的表达式 字面常量 或返回右值的表达式
+
+int i = 42;             
+int &r = i;             正确r引用i     
+int &&rr = i;           错误 不能将一个右值引用 绑定到一个 左值上
+int &r2 = i * 42;       错误 i * 42 是一个右值
+const int &r3 = i * 42; 正确 我们可以将一个const的引用绑定到一个右值上
+int &&rr2 = i * 42;     正确 将rr2绑定到乘法结果上
+
+左值持久 右值短暂
+变量是左值 因此我们不能将一个右值直接绑定到一个变量上 即使这个变量是右值引用类型也不行
+int &&rr1 = 42; 正确 字面常量是右值
+int &&rr2 = rr1;错误 表达式rr1是左值
+
+虽然不能将一个右值引用直接绑定到一个左值上 但我们可以显式地将一个左值 转换为对应的右值引用类型
+int &&rr3 = std::move(rr1);
+
+移动构造函数 和 移动赋值运算符
+StrVec::StrVec(StrVec &&s) noexcept: elements(s.elements), first_free(s.first_free), cap(s.cap)
+{ 成员初始化器接管s中的资源
+	令s进入这样的状态  对其运行析构函数是安全的
+	s.elements = s.first_free = s.cap = nullptr;
+}
+noexcept 通知标准库 我们的构造函数不抛出异常  在声明和定义中 都需要指定
+移动构造函数 不分配任何新内存 它接管 StrVec 中的内存
+
+StrVec &StrVec::operator=(StrVec &&rhs) noexcept
+{
+	if (this != &rhs)
+	{
+		free();
+		elements = rhs.elements;
+		first_free = rhs.first_free;
+		cap = rhs.cap;
+		rhs.elements = rhs.first_free = rhs.cap = nullptr;
+	}
+	return *this;
+}
+移后源对象必须可析构
+编写移动操作时 必须确保移后源对象 进入一个可析构的状态
+
+合成的移动构造函数 和移动赋值运算符
+只有当一个类没有定义任何自己版本的拷贝控制成员 且类的每个非 static数据成员 都可以移动时
+编译器才会为它合成移动构造函数 和移动赋值运算符
+
+struct X
+{
+	int i;
+	string s;
+};
+
+struct hasX
+{
+	X mem;
+};
+
+X x, x2 = std::move(x);        使用合成的移动构造函数     
+hasX hx, hx2 = std::move(hx);  使用合成的移动构造函数
+
+struct hasY
+{
+	hasY() = default;
+	hasY(hasY&&) = default;
+	Y mem;
+};
+hasY hy, hy2 = std::move(hy); 错误 移动构造函数是 删除的
+假定y是一个类 它定义了自己的拷贝构造函数 但未定义自己的移动构造函数
+
+定义了一个移动构造函数或移动赋值运算符的类 必须也定义自己的拷贝操作
+否则 这些成员默认被定义为删除的
+
+
+移动右值 拷贝左值。。。。
+
+StrVec v1, v2;
+v1 = v2;                    v2是左值 使用拷贝赋值 
+StrVec getVec(istream &);   getVec 返回一个右值
+v2 = getVec(cin);           getVec(cin) 是一个右值 使用移动赋值
+
+。。。。但如果没有移动构造函数 右值也被拷贝
+
+class Foo
+{
+public:
+	Foo() = default;
+	Foo(const Foo&);
+};
+
+Foo x;
+Foo y(x);               拷贝构造函数 x是一个左值
+Foo z(std::move(x));    拷贝构造函数 因为未定义移动的构造函数
+
+在对z进行初始化时 我们调用了move(x) 它返回一个绑定到x的 Foo&&
+Foo 的拷贝构造函数是可行的 因为我们可以将一个Foo&& 转换为一个 const Foo &
+因此z的初始化 将使用Foo的拷贝构造函数
+
+如果一个类有一个可用的拷贝构造函数 而没有移动构造函数 则其对象是通过
+拷贝构造函数来移动的 拷贝赋值运算符 和 移动赋值运算符 的情况类似
+
+拷贝并交换赋值运算和移动操作
+
+class HasPtr
+{
+public:
+	HasPtr(HasPtr &&p) noexcept: ps(p.ps), i(p.i) { p.ps = 0; }
+	HasPtr& operator=(HasPtr rhs)  赋值运算符 即是移动赋值运算符 也是拷贝赋值运算符
+	{
+		swap(*this, rhs);
+		return *this;
+	}
+}
+
+假定hp 和 hp2 都是HasPtr 对象
+hp = hp2;            hp2是一个左值 hp2通过拷贝函数来拷贝
+hp = std::move(hp2);  移动构造函数移动hp2
+
+第一个赋值中 右侧运算对象是一个左值 因此移动构造函数是不可行的 rhs将使用拷贝构造函数来初始化
+拷贝构造函数将分配一个新的 string 并拷贝hp2 指向string 
+
+在第二个赋值中 我们调用std::move 将一个右值引用绑定到hp2 上 在此情况下
+拷贝构造函数和移动构造函数都是可行的 但是实参是一个右值引用 移动构造函数是精确匹配
+移动构造函数从hp2拷贝指针 而不会分配任何内存
+
+更新三/五法则
+所有五个拷贝控制成员 应该看作一个整体
+某些类必须定义了拷贝构造函数 拷贝赋值运算符 和析构函数才能正常工作
+这些类通常拥有一个资源 而拷贝成员必须拷贝此资源
+一般来说拷贝一个资源会导致一些额外开销 在这种拷贝并非必要的情况下
+定义了移动构造函数和移动赋值运算符的类 就可以避免此问题
+
+Message类的移动操作
+
+从本来Message 移动Floder指针
+void Message::move_Floders(Message *m)
+{
+	floders = std::move(m->folders);   使用set的移动赋值运算符
+	for (auto f : floders)             对每个Folders 
+	{
+		f->remMsg(m);                  从Folders中删除旧 Message
+		f->addMsg(this);               将本Message 添加 到 Folder中
+	}
+	m->folders.clear();         确保销毁m是无害的
+}
+
+Message& Message::operator=(Message &&rhs)
+{
+	if (this != &rhs)   检查自赋值情况
+	{
+		remove_from_Folders();
+		contents = std::move(rhs.contents);  移动赋值运算符
+		move_Floders(&rhs);    重置Folders指向本messge
+	}
+	return *this;
+}
+
+移动迭代器
+移动迭代器的 解引用运算符 生成一个右值引用
+我们通过调用标准库的 make_move_iterator 函数将一个普通迭代器转换为移动迭代器
+
+void StrVec::reallocate()
+{
+	auto newcapacity = size() ? 2 * size() : 1;
+	auto first = alloc.allocate(newcapacity);
+
+	auto last = uninitialized_copy(make_move_iterator(begin()), make_move_iterator(end()), first);
+	free();
+	elements = first;
+	first_free = last;
+	cap = newcapacity + elements;
+}
+uninitialized_copy 对输入序列中的每个元素调用 construct 来将元素拷贝到目的位置
+此算法使用迭代器的解引用运算符从输入序列中提取元素 由于我们传递给它的是移动迭代器
+因此解引用运算符生成的是右值引用 这意味着construct将使用移动构造函数开构造元素
+
+不要随意使用移动操作
+
+右值成员和成员函数
+区分移动和拷贝的重载函数 通常有一个版本接受一个 const T& 而另一个版本接受一个 T&&
+
+class StrVec
+{
+pubilc:
+	void push_back(const std::string&);   拷贝元素
+	void push_back(std::string&&);        移动元素 
+};
+
+void StrVec::push_back(const string& s)
+{
+	chk_n_alloc();
+	alloc.construct(first_free++, s);
+}
+void StrVec::push_back(string && s)
+{
+	chk_n_alloc();
+	alloc.construct(first_free++, std::move(s));	
+}
+
+StrVec vec;
+string s = "some string or another";
+vec.push_back(s);       调用push_back(const string&)
+vec.push_back("done");  调用push_back(string&&)
+
+调用的差别在于实参是一个左值还是一个右值
+
+右值和左值引用成员函数
+我们指出this的左值 右值属性的方式与定义const成员函数相同
+即在 参数列表后放置一个	引用限定符
+
+class Foo
+{
+public:
+	Foo &operator=(const Foo&) &;   只能向可修改的左值赋值
+};
+Foo &Foo::operator=(const Foo &rhs) &
+{
+	return *this;
+}
+
+引用限定符 可以是& 也可以是 && 分别指出this可以指向一个左值或右值
+
+Foo &retFoo();  返回一个引用 retFoo是一个左值
+Foo retVal();   返回一个值  retVal 是一个右值
+Foo i, j;       i j都是左值
+i = j;          正确
+retFoo() = j;   正确
+retVal() = j;   错误 retVal返回一个右值
+i = retVal();   正确 我们可以将一个右值作为赋值操作的右侧运算对象
+
+引用限定符必须跟在const 限定符之后
+
+重载和引用函数
+
+引用限定符也可以区分重载版本
+class Foo
+{
+public:
+	Foo sorted() &&;
+	Foo sorted() const &;
+private:
+	vector<int> data;
+};
+
+本对象为右值 原址排序
+Foo Foo::sorted() &&
+{
+	sort(data.begin(), data.end());
+	return *this;
+}
+
+本对象是 const 或是一个左值 哪种情况都不能对他原址排序
+Foo Foo::sorted() const &
+{
+	Foo ret(*this);                          拷贝一个副本
+	sort(ret.data.begin(), ret.data.end());  排序副本
+	return ret;                              返回副本
+}
+
+retVal.sorted()  retVal 是一个右值 调用Foo::sorted() &&
+retFoo.sorted()  retFoo 是一个左值 调用Foo::sorted() const &
+
+class Foo
+{
+public:
+	Foo sorted() &&;
+	Foo sorted() const;  错误 必须加上引用限定符
+
+	using Comp = bool (const int&, const int&);
+	Foo sorted(Comp*);       正确 不同的参数列表
+	Foo sorted(Comp*) const; 正确 两个版本都没有引用限定符
+}
+
+如果一个成员函数有引用限定符  则具有相同参数列表的所有版本 都必须有引用限定符
+
+###### 第十四章 重载运算与类型转换 ######
+
