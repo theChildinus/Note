@@ -5471,3 +5471,321 @@ int i = s3 + 0;          二义性错误
 
 
 ####### 第十五章 面向对象程序设计 #######
+面向对象的程序设计的 核心思想是 数据抽象 继承 和动态绑定
+
+继承
+基类将 类型相关的函数 与 派生类不做改变的 直接继承的函数区分对待
+对于某些函数 基类希望它的派生类各自定义适合自身的版本 此时的基类就将这些函数声明成 虚函数
+
+class Quote
+{
+public:
+	std::string isbn() const;
+	virtual double net_price(std::size_t n) const;
+};
+
+派生类必须通过使用 类派生列表 明确指出它是从哪个基类继承来的
+
+class Bulk_quote : public Quote
+{
+public:
+	double net_price(std::size_t n) const override;
+};
+
+派生类必须在其内部对所有重新定义的虚函数进行声明
+新标准 允许派生类显式地注明 它使用哪个成员函数改写 基类的虚函数 
+在该函数的形参列表之后增加一个 override 关键字k在哪个桶中
+
+动态绑定
+通过使用动态绑定我们能用 同一段代码 分别处理 Quote 和 Bulk_quote的对象
+
+double price_total(ostream &os, const Quote &item, size_t n)
+{
+	根据传入item 形参的对象类型调用 Quote::net_price
+	或者 Bulk_quote::net_price
+	double ret = item.net_price(n);
+	os << "ISBN" << item.isbn() << " # sold: " << n << 	" total due: " << ret << endl;
+
+	return ret;
+}
+
+Quote basic;
+Bulk_quote bulk;
+print_total(cout, basic, 20);  调用Quote::net_price
+print_total(cout, bulk, 20);   调用Bulk_quote::net_price
+
+上述过程中 函数的运行版本由实参决定 即在运行时选择函数的版本
+
+在c++中 当我们使用基类的引用(或指针) 调用一个虚函数时 将发生动态绑定
+
+定义基类和派生类
+
+定义基类
+class Quote
+{
+public:
+	Quote() = default;
+	Quote(const std::string &book, double sales_price): bookNo(book), price(sales_price) { }
+	std::string isbn() const { return bookNo; }
+	virtual double net_price(std::size_t n) const;
+	virtual ~Quote() = default; 对析构函数进行动态绑定
+private:
+	std::string bookNo;         书记的ISBN编号
+protected:
+	double price = 0.0;         代表普通状态下不打折的价格
+};
+
+作为继承关系中根节点 的类 通常都会定义一个虚析构函数
+
+基类通过在其成员函数的声明语句之前加上关键字 virtual 使得该函数执行动态绑定
+任何构造函数之外的非静态函数都可以是 虚函数
+
+访问控制与继承
+派生类可以继承定义在基类中的成员 但是派生类的成员函数不一定有权访问从基类继承而来的成员
+派生类能够访问公有成员 而不能访问私有成员
+基类希望他的派生类有权访问该成员 同时禁止其他用户访问 我们用受保护的protected访问运算符 说明
+
+我们的Quote类希望 它的派生类定义各自的net_price函数 因此派生类需要访问Quote的price成员
+此时我们将price定义成受保护的 
+与之相反 派生类方位bookNo成员的方法 与其他用户一样 都是通过调用isbn函数 因此bookNo 定义成私有
+即使Quote派生出的类也不能直接访问它
+
+
+定义派生类 
+类派生列表 
+派生类必须将其继承而来的成员函数中需要覆盖的那些 重新声明 
+
+class Bulk_quote : public Quote
+{
+public:
+	Bulk_quote() = default;
+	Bulk_quote(const std::string&, double, std::size_t, double);
+	double net_price(std::size_t) const override;
+private:
+	std::size_t min_qty = 0;   适用折扣政策的最低购买量
+	double discount = 0.0;     折扣额
+}; 
+
+我们的Bulk_quote类从它的基类Quote 那里继承了isbn函数 和 bookNo price 等数据成员
+此外还定义了net_price的新版本 同时拥有两个新增加的数据成员 min_qty discount
+
+访问说明符的作用是控制派生类 从基类继承来的成员 是否 对派生类的用户可见
+
+如果一个派生是公有的 则基类的公有成员 也是派生类接口的组成部分 
+此外我们能够将公有派生类型的对象 绑定到基类的引用或指针上 
+因为我们在 派生列表中使用了public 所以 Bulk_quote的接口隐式的包含isbn函数
+同时在任何需要Quote的引用或指针的地方 我们都能使用 Bulk_quote的对象
+
+派生类中的虚函数
+如果派生类没有覆盖 其基类中的某个虚函数 则该虚函数的行为类似于其他的普通成员
+派生类会直接继承其在基类中的版本
+
+
+派生类对象及 派生类向基类的 类型转换
+一个Bulk_quote 对象将包含四个数据元素  它从Quote继承而来的bookNo 和 price数据成员
+以及 Bulk_quote自己定义的 min_qty 和 discount 成员
+
+Quote item;       基类对象
+Bulk_quote bulk;  派生类对象
+Quote *p = &item; p指向Quote对象
+p = &bulk;        p指向bulk的 Quote部分
+Quote &r = bulk;  r绑定到 bulk的Quote部分
+
+这种转化通常称为派生类到基类的类型转换
+
+在派生类对象 中含有 与其基类对应的组成部分 这一事实是继承的关键所在
+
+派生类构造函数
+派生类必须使用基类的构造函数 来初始化它的基类部分
+每个类控制它自己的成员初始化过程
+
+Bulk_quote(const std::string& book, double p, std::size_t qty, double disc):
+			Quote(book, p), min_qty(qty), discount(disc) { }
+
+除非我们特别指出 否则派生类对象的基类部分会像数据成员一样执行默认初始化
+
+首先初始化基类的部分 然后按照声明顺序一次初始化派生类的成员
+
+派生类使用基类的成员
+派生类可以访问基类的公有成员 和 受保护成员
+
+double Bulk_quote::net_price(size_t cnt) const
+{
+	if (cnt >= min_qty)
+	{
+		return cnt * (1 - discount) * price;
+	}
+	else
+	{
+		return cnt * price;
+	}
+}
+派生类的作用域嵌套在基类的作用域之内
+
+遵循基类的接口
+必须明确一点每个类定义各自的接口 想要与类的对象交互必须使用该类对象的接口 即使这个对象是派生类的基类部分
+因此派生类对象不能直接初始化基类的成员 尽管我们可以在派生类构造函数体内给它的公有或受保护的基类成员赋值
+但是最好不要这么做
+派生类应该遵循基类的接口 通过调用基类的构造函数 来初始化那些从基类中继承来的成员
+
+继承与静态成员
+如果基类定义了 一个静态成员 则整个继承体系中只存在该成员的唯一定义
+
+class Base
+{
+public:
+	static void statmem();
+};
+class Dervied : public Base
+{
+	void f(const Dervied&);
+};
+静态成员遵循通用的访问控制规则
+void Dervied::f(const Dervied &dervied_obj)
+{
+	Base::statmem();     正确 Base定义了 statmem
+	Dervied::statmem();  正确 Dervied继承了 statmem
+	dervied_obj.statmem();  通过Dervied对象访问
+	statmem();              通过this对象访问
+}
+
+派生类的声明 
+class Bulk_quote : public Quote; 错误 派生列表不能出现在这里
+class Bulk_quote;                正确 声明派生类的正确方式
+派生列表以及与 定义有关的其他细节必须与类的主题一起出现
+
+被用作基类的类
+如果我们想将某个类 用作 基类 则该类必须已经定义 而非 仅仅声明
+一个类不能派生他本身
+
+class Base { /**/};
+class D1 : public Base { /**/};
+class D2 : public D1 {/**/};
+Base 是D1 的直接基类 同时是 D2的间接基类
+
+最终的派生类 将包含它的直接基类的子对象 以及每个间接基类的子对象
+
+防止继承
+class NoDervied final {/**/};     NoDervied 不能作为基类
+class Base {/**/};
+class Last final : Base {/**/};   错误 Last不能作为基类
+class Bad : NoDervied {/**/};     错误 NoDervied 是final的
+class Bad2 : Last {/**/};         错误 Last是 final的
+
+类型转化与继承
+理解基类和派生类 之间的类型转换是理解 C++ 语言面向对象编程的关键所在
+
+可以将基类的指针或者引用 绑定到派生类对象上有一层 极为重要的意义
+当使用基类的引用或指针时  实际上我们并不清楚该引用或者指针 所绑定对象的真实类型
+该对象可以是基类的对象 也可能是派生类的对象
+
+智能指针类 也支持派生类向基类的类型转换 这意味着我们可以将一个派生类对象的指针 存储在一个基类的智能指针中
+
+静态类型和动态类型
+当我们使用存在继承关系的类型时 必须将一个变量或其他表达式的静态类型 与 该表达式表示对象的 动态类型
+区分开来 
+
+我们知道 item的静态类型是Quote& 它的动态类型则依赖于 item绑定的实参
+动态类型直到运行时调用该函数时才知道
+如果我们传递一个 Bulk_quote对象给print_total 则item 的静态类型将与它的动态类型不一致
+
+如果表达式既不是引用也不是指针 则它的动态类型永远和静态类型一致
+基类的指针或引用的 静态类型可能与其动态类型不一致 
+
+
+不存在从基类向派生类的隐式类型转换。。。
+之所以存在派生类向基类的类型转换 是因为每个派生类对象都包含一个基类部分
+而基类的引用和指针可以绑定到该基类部分
+Quote base;
+Bulk_quote* bulkP = &base;   错误 不能将基类转换为派生类
+Bulk_quote& bulkRef = base;  错误 不能将基类转换为派生类
+
+特殊情况
+Bulk_quote bulk;
+Quote *itemP = &bulk;          正确 动态类型为 Bulk_quote
+Bulk_quote *bulkP = itemP;     错误 不能将基类转换为派生类
+
+。。。在对象之间不存在类型转换
+Bulk_quote bulk;    派生类对象
+Quote item(bulk);   使用 Quote::Quote(const Quote&) 构造函数
+item = bulk;        调用 Quote::operator=(const Quote&)
+
+构造item 运行Quote的拷贝构造函数 它负责拷贝bulk中 Quote的成员
+同时忽略掉bulk中 Bulk_quote部分的成员
+
+类似的 对于将bulk赋值给item的操作来说 只有bulk中Quote部分的成员被赋值给 item
+因此在上述过程中 忽视 Bulk_quote部分 所以我们说 bulk的 Bulk_quote 部分被切掉了
+
+当我们用一个派生类对象为 一个基类对象初始化和赋值 只有该派生类对象中的基类部分被
+拷贝 移动 和 赋值 它的派生类部分将被忽略掉
+
+存在继承关系的类型之间 的转换规则
+1.从派生类向基类的类型转换只对 指针或引用类型 有效
+2.基类向派生类不存在隐式类型转换
+3.和任何其他成员一样 派生类向基类的类型转换 也可能会由于访问受限而变得不可行
+
+
+虚函数
+对虚函数的调用可能在运行时才被解析
+Quote base("0-201-82470-1", 50);
+print_total(cout, base, 10);               调用Quote::net_price
+Bulk_quote derived("0-201-82470-1", 50, 5, .19);
+print_total(cout, dervied, 10);            调用Bulk_quote::net_price
+
+!!!动态绑定只有我们通过指针或引用调用虚函数时才会发生
+base = dervied;      把dervied 的Quote 部分拷贝给 base
+base.net_price(20);  调用Quote::net_price
+
+我们可以改变base表示的对象的值 但是不会改变该对象的类型
+
+!!!!引用或指针的静态类型和动态类型不同这一事实 正是 C++语言支持多态性的根本所在
+
+当且仅当 对 通过指针或引用调用虚函数时 才会在运行时解析该调用
+也只有在这种情况下 对象的动态类型才有可能与静态类型不同
+
+派生类中的虚函数
+派生类如果覆盖了某个继承而来的虚函数 则它的形参类型必须与被它覆盖的基类函数完全一致
+派生类中虚函数 的返回类型 也必须与基类函数匹配 改规则存在一个例外
+当类的虚函数返回类型是类本身的指针或引用时 上述规则无效
+
+基类中的虚函数 在派生类中 隐含的也是一个虚函数 
+当派生类覆盖了某个虚函数时 该函数在基类中的形参与派生类中的形参严格匹配
+
+final 和 override 说明符
+struct B
+{
+	virtual void f1(int) const;
+	virtual void f2();
+	void f3();
+};
+struct D1 : B
+{
+	void f1(int) const override;    正确 f1 与基类中的f1 匹配
+	void f2(int) override;          错误 B没有形如f2(int) 的函数
+	void f3() override;             错误 f3不是虚函数
+	void f4() override;             错误 B没有名为f4 的函数
+};
+
+
+struct D2 : B
+{
+	void f1(int) const final;  从B中继承f2 和 f3  覆盖 f1(int)
+							   不允许后续的其他类覆盖 f1(int)
+};
+
+struct D3 : D2
+{
+	void f2();            正确 覆盖从间接基类B继承而来的f2
+	void f1(int) const;   错误 D2已经将f2声明成final
+}
+
+虚函数与 默认实参
+如果虚函数使用默认实参 则基类和派生类中定义的默认实参最好一致
+
+回避虚函数的机制
+double undiscounted = baseP->Quote::net_price(42); 编译时完成
+通常情况下 只有成员函数 或友元中的代码 才需要使用作用域运算符来回避虚函数的机制
+
+如果一个派生类虚函数 需要调用它的基类版本
+但是没有使用作用域运算符 则在运行时该调用将被解析成 对派生类版本自身的调用
+从而导致无限递归
