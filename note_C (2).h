@@ -5139,3 +5139,335 @@ errors(s);            在cerr中打印s 后面跟一个换行符
 函数对象常常作为泛型算法的实参 
 for_each(vs.begin(), vs.end(), PrintString(cerr, '\n'));
 for_each的第三个实参是类型 PrintString的一个临时对象 其中我们用cerr和换行符初始化了该对象
+
+
+lambda是函数对象
+当我们编写一个lambda后 编译器将表达式翻译成一个未命名类的未命名对象
+如
+stable_sort(words.begin(), words.end(), 
+			[](const string &a, const string &b) 
+			{ return a.size() < b.size(); });
+
+其行为类似于下面这个类的一个未命名对象
+class ShorterString
+{
+public:
+	bool operator()(const string &s1, const sring &s2) const
+	{
+		return s1.size() < s2.size();
+	}
+};
+
+默认情况下 lambda不能改变它捕获的变量 因此 由lambda产生的类当中的函数调用运算符是一个const成员函数
+如果 lambda被声明为可变的 则调用运算符就不是const的了 
+用这个类代替 lambda表达式 重写
+stable_sort(words.begin(), words.end(), shorterString());
+
+表示lambda及相应捕获行为的类
+auto wc = find_if(words.begin(), words.end(), [sz](const string &a){ return a.size() >= sz; });
+
+该lambda产生的类将类似
+class SizeComp
+{
+	SizeComp(size_t n):sz(n) { }     该形参对应捕获的变量
+	bool operator()(const string &s) const
+	{
+		return s.size() >= sz;
+	}
+private:
+	size_t sz;    该数据成员对应通过捕获的变量
+};
+这个类 不含有默认构造函数 因此要使用这个类必须提供一个实参
+
+auto wc = find_if(words.begin(), words.end(), SizeComp(sz));
+
+lambda表达式产生的类不含默认构造函数 赋值运算符及默认析构函数
+
+标准库定义的函数对象
+plus<int> intAdd;
+negate<int> intNegate;
+int sum = intAdd(10, 20);                sum = 30
+sum = intNegate(intAdd(10, 20));         sum = -30
+sum = intAdd(10, intNegate(10));         sum = 0
+
+定义在functional 头文件中
+
+在算法中使用标准库函数对象
+sort(svec.begin(), svec.end(), greater<string>());
+传入一个临时的函数对象用于执行两个string对象>比较运算
+
+vector<string *> nameTable;
+sort(nameTable.begin(), nameTable.end(), [](string *a, string *b){ return a < b; });
+错误 nameTable中的指针彼此之间没有关系 所以<将产生未定义的行为
+
+sort(nameTable.begin(), nameTable.end(), less<string*>());
+正确 标准库规定指针的less是定义良好的
+
+关联容器使用less<key_type> 对元素排序 因此我们可以定义 一个指针的set或者在
+map中使用指针 作为关键值 无序声明less
+
+可调用对象与 function
+c++ 几种可调用对象：函数 函数指针 lambda表达式 bind创建的对象 以及 重载了函数调用运算符的类
+
+两个不同类型的可调用对象可能共享一种 调用形式 调用形式指明了调用返回的类型以及传输给调用的实参类型
+int(int, int) 是一个函数类型 它接受两个int 返回一个int
+
+不同类型可能有相同的调用形式
+int add(int i, int j) { return i + j; }
+auto mod = [](int i, int j){ return i % j; }
+struct divide{
+	int operator()(int denominator, int divisor)
+	{
+		return denominator / divisor;
+	}
+};
+
+上面这些可调用对象 共享了一种调用形式 int(int, int)
+
+为了实现一个计算器 	需要定义一个函数表 用于存储指向这些可调用对象的指针
+函数表很容易通过map实现
+map<string, int(*)(int, int)> binops;
+构建从运算符到函数指针的映射关系 其中函数接受两个int 返回一个int
+binops.insert({"+", add});  {"+", add} 是一个pair 
+
+但我们不能将mod或者divide存入 binops
+问题在于 mod是个 lambda表达式  而每个lambda表达式有它自己的类类型
+
+
+标准库function类型
+function<int(int, int)> 这里我们声明一个function类型 
+接受两个int 返回一个int
+function<int(int, int)> f1 = add;      函数指针 
+function<int(int, int)> f2 = divide(); 函数对象类的对象
+function<int(int, int)> f3 = [](int i, int j) { return i * j; }; lambda表达式
+
+cout << f1(4,2) << endl;     6
+cout << f2(4,2) << endl;     2
+cout << f3(4,2) << endl;     8
+
+使用这个function类型 我们可以重新定义map
+map<string, function<int(int, int)>> binops;
+
+我们能把所有可调用对象 包括函数指针 lambda或者函数对象在内 都添加到这个map中
+
+map<string, function<int(int, int)>> binops = 
+{
+	{"+", add},                                   函数指针
+	{"-", std::minus<int>()},                     标准库函数对象
+	{"/", divide()},                              用户定义的函数对象
+	{"*", [](int i, int j) { return i * j; }},    未命名的lambda
+	{"%", mod}                                    命名了的lambda对象
+};
+
+binops["+"](10, 5);
+binops["-"](10, 5);
+binops["/"](10, 5);
+binops["*"](10, 5);
+binops["%"](10, 5);
+
+第一个调用中 我们获得的元素存放着一个指向add函数的指针 调用实际上是使用该指针调用add
+第二个 返回一个存放std::minus<int> 类型对象的function 我们将执行该对象的调用运算符
+
+重载的函数 与function
+int add(int i, int j) { return i + j; }
+Sales_data add(const Sales_data&, const Sales_data&);
+map<string, function<int(int, int)>> binops;
+binops.insert({"+", add}); 错误 那个add？
+
+解决上面二义性的一条途径是 存储函数指针 而非函数名字
+int (*fp)(int, int) = add;  指针所指的add 是接受两个int的版本
+binops.insert({"+", fp});   正确 fp 指向一个正确的add版本
+
+lambda也可以消除二义性
+binops.insert( {"+", [](int a, int b){ return add(a, b); }} );
+
+
+重载类型转换 与运算符
+
+类型转换运算符 是类的特殊成员函数
+operator type() const;
+类型转换运算符 既没有显式的返回类型 也没有形参 而且必须定义成类的成员函数
+
+class SmallInt
+{
+public:
+	SmallInt(int i = 0): val(i)
+	{
+		if (i < 0 ||i > 255)
+		{
+			throw std::out_of_range("bad SmallInt value");
+		}
+	}
+	operator int() const { return val; }
+private:
+	std::size_t val;
+};
+
+构造函数将算数类型的值 转换成 SmallInt对象
+类型转换运算符 将 SmallInt对象转换成 int
+
+SmallInt si;
+si = 4;  4隐式的转换成 SmallInt 然后调用 SmallInt::operator=
+si + 3;  首先将 si隐式地转化成int 然后执行整数的加法
+
+SmallInt si = 3.14; 内置类型转化 将double转换成int 调用 SmallInt(int)构造函数
+si + 3.14; SmallInt的类型转换运算符 将si转换成int
+内置类型 将int继续转成double
+
+避免过度使用类型转换函数
+类型转换运算符可能产生意外的结果
+
+当istream 含有向bool的类型转换
+int i = 42;
+cin << i;
+istream 本身没有定义<< 所以本来代码产生错误
+然而该代码 能使用istream的bool类型转换运算符 将 cin ---> bool ----> int
+int用作内置类型左移运算符的左侧运算对象
+这样提升后的bool 会被左移42个位置
+
+显式的类型转换运算符
+为了防止异常
+class SmallInt
+{
+public:
+	explicit operator int() const { return val; }
+};
+
+和显式的构造函数一样 编译器通常不会将一个显式的类型转换运算符用于隐式类型转换
+
+SmallInt si = 3;   si 构造函数不是显式的
+si + 3;            错误 此处需要隐式的类型转换 但类的运算符是显式的
+static_cast<int>(si) + 3; 正确 显式地请求类型转换
+
+当表达式出现在下列位置时 显式的类型转换 将被隐式的执行
+1. if while do语句的条件部分
+2. for 语句头的条件表达式
+3.  ! || && 的运算对象
+4. ? : 的条件表达式
+
+c++ 11 IO标准库通过定义一个向bool的显式类型转换实现
+while (std::cin >> value)
+无论我们什么时候在条件中使用流对象 都会使用为io类型定义的operator bool
+为了对条件求值 cin 被 istream operator bool 类型转换函数 隐式地 执行了转换
+向bool 的类型转换通常用在条件位置 因此operator 一般定义成 explicit
+
+通常情况下 不要为类定义相同的类型转换 也不要为在类中定义两个及两个以上转换源 或转换目标是算数类型的转换
+
+实参匹配和 相同的类型转换
+下面的例子定义两种将B转换成A的方法 一种使用B的类型转换运算符
+一种使用A的以B为参数的构造函数
+
+struct B;
+struct A
+{
+	A() =default;
+	A(const B&);          把一个B转换成A
+};
+
+struct B
+{
+	operator A() const;   也把一个B转换成A
+}
+
+A f(const A&);
+B b;
+A a = f(b);  二义性错误  含义是 f(B::operator A())
+						还是 f(A::A(const B&))
+
+如果我们确实想执行上面的调用 就不得不显式的调用 类型转换运算符 或 转换构造函数
+
+A a1 = f(b.operator A());  正确使用 b的类型转换运算符
+A a2 = f(A(b));            正确 使用A的构造函数 
+
+二义性与 转换目标为内置类型 的多重类型转换
+
+struct A
+{
+	A(int = 0);   最好不要创建两个转换源都是算数类型的类型转换
+	A(double);
+	operator int() const;  最好不要创建两个 转换对象都是算数类型的类型转换
+	operator double() const;
+};
+
+void f2(long double);
+A a;
+f2(a);   二义性错误 含义是f(A::operator int()) 还是 f(A::operator double())
+
+long lg;
+A a2(lg); 二义性错误 含义是 A::A(int) 还是 A::A(double)
+
+short s = 42;
+A a3(s);  把short提升成int 优于 把short提升成 double   使用 A::A(int)
+
+当我们使用两个用户定义的类型转换时 如果转换函数之前或之后存在 标准类型转换
+则标准类型转换将决定最佳匹配到底 是哪个
+
+类型转换与运算符
+
+1.不要令两个类执行相同的类型转换
+2.避免转换目标是内置算数类型的类型转换 特别是当你已经定义了一个转换成算数类型的类型转换时
+      不要再定义接受算数类型的重载运算符
+      不要再定义转换到多种算数类型的类型转换
+
+一言以蔽之 除了显式地向bool类型的转换之外 我们应该尽量避免定义类型转换函数
+并尽可能地限制那些 显然正确 的非显式构造函数
+
+重载函数与转化构造函数
+
+struct C
+{
+	C(int);
+};
+struct D
+{
+	D(int);
+};
+
+void manip(const C&);
+void manip(const D&); 
+manip(10);     二义性错误 含义是 mainip(C(10)) 还是 mainip(D(10))
+
+显式地构造正确的类型 消除二义性 
+mainip(C(10));
+如果我们在调用重载函数 时我们需要使用构造函数或者强制类型转换来改变实参的类型
+通常意味着程序设计存在不足
+
+重载函数与用户定义的类型转换（类类型转换的同义词）
+
+struct E
+{
+	E(double);
+};
+
+void mainip(const C&);
+void mainip(const E&);
+mainip2(10); 二义性错误 含义是mainip2(C(10)) 还是 mainip2(E(double(10)))
+
+在调用重载函数时 如果需要额外的标准类型转换 则该转换的级别只有当所有可行函数都请求同一个
+用户定义的类型转换时才有用 如果所需的用户定义的类型转换不止一个则该调用具有二义性
+
+函数匹配与重载运算符
+重载的运算符也是重载的函数
+
+表达式中运算符 的候选函数集 既应该包括 成员函数 也应该包括非成员函数
+class SmallInt
+{
+	friend SmallInt operator+(const SmallInt&, const SmallInt&);
+public:
+	SmallInt(int = 0);                      转换源为int的类型转换
+	operator int() const { return val; }    转换目标是int的类型转换
+private:
+	std::size_t val;
+};
+
+SmallInt s1, s2;
+SmallInt s3 = s1 + s2;   使用重载的 operator +
+int i = s3 + 0;          二义性错误
+
+我们可以把 0 ----> SmallInt 然后使用 SmallInt +
+或者 s3 -----> int  然后对两个 int 执行内置+
+如果我们在调用重载函数对同一个类既提供了转换目标是算数类型的类型转换 也提供了重载的运算符
+则 将会遇到重载运算符与内置运算符的二义性问题
+
+
+####### 第十五章 面向对象程序设计 #######
