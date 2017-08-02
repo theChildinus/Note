@@ -5499,7 +5499,7 @@ public:
 动态绑定
 通过使用动态绑定我们能用 同一段代码 分别处理 Quote 和 Bulk_quote的对象
 
-double price_total(ostream &os, const Quote &item, size_t n)
+double print_total(ostream &os, const Quote &item, size_t n)
 {
 	根据传入item 形参的对象类型调用 Quote::net_price
 	或者 Bulk_quote::net_price
@@ -5789,3 +5789,659 @@ double undiscounted = baseP->Quote::net_price(42); 编译时完成
 如果一个派生类虚函数 需要调用它的基类版本
 但是没有使用作用域运算符 则在运行时该调用将被解析成 对派生类版本自身的调用
 从而导致无限递归
+
+
+抽象基类
+纯虚函数
+Disc_quote类  我们不希望用户创建一个Disc_quote对象
+Disc_quote类表示的是一本打折书籍的通用概念 而非具体的折扣策略
+
+我们可以将net_price 定义为纯虚
+和普通虚函数不一样 一个纯虚函数无须定义
+=0 出现在类内部的虚函数声明处 
+class Disc_quote : public Quote
+{
+public:
+	Disc_quote() = default;
+	Disc_quote(const std::string& book, double price
+			    std::size_t qty, double disc):
+				Quote(book, price), quantity(qty), discount(disc) { }
+	double net_price(std::size_t) const = 0;           纯虚函数
+protected:
+	std::size_t quantity = 0;
+	double discount = 0.0;
+};
+
+我们也可以为纯虚函数提供定义 不过函数体必须定义在类的外部 
+
+含有纯虚函数的类是抽象基类
+我们不能创建一个抽象基类的对象
+我们可以定义Disc_quote的派生类对象 前提是这些类覆盖了net_price函数
+Disc_quote声明了纯虚函数 而 Bulk_quote将覆盖此函数
+Disc_quote discounted;   错误 不能定义Disc_quote的对象
+Bulk_quote bulk;         正确 Bulk_quote中没有纯虚函数
+
+派生类构造函数只初始化它的直接基类
+class Bulk_quote : public Disc_quote
+{
+public:
+	Bulk_quote() = default;
+	Bulk_quote(const std::string& book, double price,
+			std::size_t qty, double disc):
+			Disc_quote(book, price, qty, disc) { }
+	double net_price(std::size_t) const override;
+};
+
+这个版本的Bulk_quote 的直接基类是 Disc_quote 间接基类是 Quote
+每个Bulk_quote 对象包含三个子对象 一个空的Bulk_quote部分 一个 Disc_quote子对象 和 Quote子对象
+
+Quote的构造函数 首先初始化 bulk的bookNo 和 price 当Quote的构造函数结束后
+开始运行Disc_quote 的构造函数 并初始化 quantity 和 discount
+最后运行 Bulk_quote的构造函数
+
+重构负责重新设计类的体系 以便将 操作和或 数据从一个类移动到另一个类
+
+
+访问控制与继承
+protected
+1.和私有成员类似 受保护的成员对于类的用户来说是不可访问的
+2.和公有成员类似 受保护的成员对于派生类的成员和友元来说是可以访问的
+3.派生类的成员或友元只能通过 [派生类对象] 来访问基类的受保护成员
+  派生类对于一个 [基类对象] 中的受保护成员没有任何访问特权
+
+class Base
+{
+protected:
+	int prot_mem;
+};
+class Sneaky : public Base
+{
+	friend void clobber(Sneaky&);   能访问Sneaky::prot_mem
+	friend void clobber(Base&);     不能访问Base::prot_mem
+	int j;							j 默认是private
+};
+
+正确 clobber能访问Sneaky 对象的private 和 protected成员
+void clobber(Sneaky &s) { s.j = s.prot_mem = 0; }
+
+错误 clobber不能访问Base的 protected成员
+void clobber(Base &b) { b.prot_mem = 0; }
+
+派生类的成员和友元只能访问 派生类类对象中的 基类部分的受保护成员
+对于普通的基类对象中的成员 不具有特殊的访问权限
+
+公有 私有 和受保护继承
+某个类对继承而来的成员的访问权限受到两个因素的影响
+1.基类中该成员的访问说明符
+2.在派生类的派生类列表中的访问说明符
+
+class Base
+{
+public:
+	void pub_mem();
+protected:
+	int prot_mem;
+private:
+	char priv_mem;
+};
+
+struct Pub_Derv : public Base
+{
+	int f() { return prot_mem; }       正确 派生类可以访问protected成员
+	char g() { return priv_mem; }      错误 private成员对于派生类来说是不可访问的
+};
+
+struct Priv_Derv : private Base
+{
+	int f1() const { return prot_mem; }  private不影响派生类的访问权限
+};
+
+派生类访问说明符 对于 派生类的成员或者友元 能否访问其直接基类的成员 没什么影响
+对基类成员的访问权限只与基类中的访问说明符有关
+
+Pub_Derv 和 Priv_Derv 都能访问受保护的成员 prot_mem 同时他们 都不能访问私有成员 priv_mem
+
+Pub_Derv d1;     继承自Base的成员是public的
+Priv_Derv d2;    继承自Base的成员是private的
+d1.pub_mem();    正确 pub_mem在派生类中是 public的 
+d2.pub_mem();    错误 pub_mem在派生类中是 private的
+
+如果继承是公有的 则成员遵循 其原有的访问控制符 此时d1 可以调用 pub_mem
+在 [Priv_Derv中 Base的成员是私有的] 因此 [类的用户] 不能调用pub_mem
+
+struct Dervied_from_Public : public Pub_Derv
+{
+	int use_base() { return prot_mem; }
+	正确 Base::prot_mem 在 Pub_Derv中仍是protected的
+};
+struct Dervied_from_Private : public Priv_Derv
+{
+	错误 Base::prot_mem 在 Priv_Derv 中是private的
+	int use_base { return prot_mem; }
+};
+派生访问说明符 还可以控制 继承自派生类 的新类 的访问权限
+
+基类变量类型   继承类型    子类变量类型 
+public         public      public
+protected                  protected
+private                    不可继承
+-------------------------------------
+public         protected   protected
+protected                  protected
+private                    不可继承
+-------------------------------------
+publlic       private      private
+protected                  private
+private                    不可继承
+
+派生类向基类转换的可访问性   假定D继承自B
+1.只有当D公有的继承B时 [用户代码] 才能使用派生类向基类的转换
+2.不论D以什么方式继承B [D的成员函数和友元] 都能使用派生类向基类的转换
+3.如果D继承B的方式是公有的或是受保护的 [则D的派生类的成员和友元] 可以使用D向B的转换
+
+基类应该将其接口成员声明为公有的
+将属于其实现的部分分成两组
+一组可供派生类访问 另一组只能由基类及基类的友元访问
+
+前者应该声明为受保护的 这样派生类就能实现自己的功能时使用基类的这些操作和数据
+对于后者应该声明为私有的
+
+友元与继承
+友元关系不能传递 也不能继承
+
+class Base
+{
+	friend class Pal;   Pal在访问Base的派生类时不具有特殊性
+};
+class Pal
+{
+public:
+	int f(Base b) { return b.prot_mem; }    正确 Pal是Base的友元
+	int f2(Sneaky s) { return s.j; }        错误 Pal不是Sneaky 的友元
+
+	对基类的访问权限由基类本身控制 即使对派生类的基类部分也是如此
+	int f3(Sneaky s) { return s.prot_mem; } 正确 Pal是Base的友元
+};
+
+每个类负责控制自己的成员的访问权限
+Pal是Base的友元 所以Pal能访问Base对象的成员 也能访问包括了Base对象内嵌在其派生类对象中的情况
+
+class D2 : public Pal
+{
+public:
+	int mem(Base b)
+	{
+		return b.prot_mem;
+	}
+};
+D2 对Base 的protected 和 private成员不具有特殊的访问能力
+
+不能继承友元关系  每个类负责控制自己的成员的访问权限
+
+改变个别成员的可访问性
+class Base
+{
+public:
+	std::size_t size() const { return n; }
+protected:
+	std::size_t n;
+};
+
+class Dervied : private Base   注意private继承
+{
+public:
+	using Base::size;
+protected:
+	using Base::n;
+}
+
+因为Dervied使用了私有继承 所以继承而来的成员size 和 n 在默认条件下是 Dervied 的私有成员
+用using 改变后 Dervied的用户可以使用 size 而 Dervied的派生类可以使用 n
+using声明语句中名字的访问权限  由该using 声明语句之前的访问说明符来决定
+
+派生类只能为那些它可以访问的名字提供using 声明
+
+默认的继承保护级别
+class Base {/**/};
+struct D1 : Base {/**/};  默认public继承
+class D2 : Base {/**/};   默认private继承
+
+
+继承中类的作用域
+派生类的作用域位于基类作用域之内
+
+Bulk_quote bulk;
+cout << bulk.isbn();
+
+isbn解析过程
+1.首先在 Bulk_quote 中查找 这一步没有找到名字isbn
+2.因为Bulk_quote 是 Disc_quote 的派生类 所以接下来在 Disc_quote中查找 仍找不到
+3.因为 Disc_quote 是 Quote 的派生类 所以接着查找Quote 此时找到了 名字 isbn
+所以最终 isbn 被解析为 Quote中的isbn
+
+class Disc_quote : public Quote
+{
+pubilc:
+	std::pair<size_t, double> discount_policy() const
+	{ return {quantity, discount}; }
+};
+
+Bulk_quote bulk;
+Bulk_quote *bulkP = &bulk;  静态类型和动态类型一致
+Quote *itemP = &bulk;       静态类型和动态类型不一致
+bulkP->discount_policy();   正确 bulkP的类型是 Bulk_quote*
+itemP->discount_policy();   错误 itemP的类型是 Quote*
+
+名字冲突与继承
+派生类 也能重用定义在其直接基类或间接基类中的名字
+此时定义在内层作用域的名字将隐藏定义在外层作用域的名字
+
+struct Base
+{
+	Base() : mem(0) { }
+protected:
+	int mem;
+};
+
+struct Dervied : Base
+{
+	Dervied(int i) : mem(i) { }     i初始化Dervied::mem Base::mem 进行默认初始化
+	int get_mem() { return mem; }   返回Dervied::mem
+protected:
+	int mem;		隐藏基类中的mem
+};
+
+Dervied d(42);
+cout << d.get_mem() << endl;  打印42
+派生类的成员隐藏同名的基类成员
+
+通过作用域运算符来使用隐藏的成员
+struct Dervied : Base
+{
+	int get_base_mem() { return Base::mem; }
+}
+除了覆盖继承而来的虚函数之外 派生类最好不要重用	其他定义在基类中的名字
+
+名字查找先于类型检查
+struct Base
+{
+	int memfcn();
+};
+struct Dervied : Base
+{
+	int memfcn(int);   隐藏基类的 memfcn
+};
+
+Dervied d; Base b;
+b.memfcn();          调用 Base::memfcn()
+d.memfcn(10);        调用 Dervied::memfcn()
+d.memfcn();          错误 参数列表为空的 memfcn 被隐藏
+d.Base::memfcn();    正确 调用 Base::memfcn
+
+第三条 编译器首先在Dervied中查找名字 memfcn 因为Dervied 确实定义了一个memfcn的成员
+所以查找过程终止 
+
+虚函数与作用域
+假如基类和派生类的虚函数接受的实参不同 则我们就无法通过基类的引用或指针调用派生类的虚函数
+
+class Base
+{
+public:
+	virtual int fcn();
+};
+
+class D1 : public Base
+{
+public:
+	隐藏基类的fcn 这个fcn不是虚函数 D1 继承了Base::fcn()的定义
+	int fcn(int);        形参列表与Base中的fcn不一致
+	virtual void f2();   是一个新的虚函数 在Base中不存在
+};
+
+class D2 : public D1
+{
+public:
+	int fcn(int);       是一个非虚函数 隐藏了D1::fcn(int)
+	int fcn();          覆盖了Base 的虚函数 fcn()
+	void f2();	        覆盖了D1 的虚函数 f2()
+};
+
+通过基类调用隐藏的虚函数
+Base bobj; D1 d1obj; D2 d2obj;
+Base *bp1 = &bobj, *bp2 = &d1obj, *bp3 = &d2obj;
+
+bp1->fcn();     虚调用 将在运行时调用Base::fcn 
+bp2->fcn();     虚调用 将在运行时调用Base::fcn 
+bp3->fcn();     虚调用 将在运行时调用D2::fcn 
+
+D1 *d1p = &d1obj; D2 *d2p = &d2obj;
+bp2->f2();      错误 Base没有名为f2的成员
+d1p->f2();      虚调用 将在运行时调用D1::f2()
+d2p->f2();      虚调用 将在运行时调用D2::f2()
+
+！！！判断的依据是 该指针所绑定对象的真实类型
+bp2 实际绑定的对象是 D1类型 而D1并没有覆盖哪个不接受实参的fcn
+所以通过bp2进行的调用将在运行时解析成Base定义的版本
+
+D2 d2obj;
+Base *p1 = &d2obj; D1 *p2 = &d2obj; D2 *p3 = &d2obj;
+p1->fcn(42);    错误 Base中没有接受一个int的fcn
+p2->fcn(42);    静态绑定 D1::fcn(int)    
+p3->fcn(42);    静态绑定 D2::fcn(int)
+
+指针都指向了D2类型的对象 但是由于我们调用的是非虚函数
+所以不会发生动态绑定 实际调用的函数版本由指针静态类型决定
+
+覆盖重载的函数
+成员函数无论是否是虚函数都能被重载
+派生类可以覆盖 重载函数的0 个 或 多个实例
+一种好的解决方法是 为重载的成员提供一条using声明语句
+
+
+构造函数与拷贝控制
+
+虚析构函数
+继承关系对基类拷贝控制 最直接的影响是基类通常应该 定义一个虚析构函数
+class Quote
+{
+public:
+	如果我们删除的是一个指向派生类对象的基类指针 则需要虚析构函数
+	virtual ~Quote() = default;       动态绑定析构函数
+};
+析构函数的虚属性会被继承
+Quote *itemP = new Quote;   静态类型和动态类型一致
+delete itemP;               调用Quote的析构函数
+itemP = new Bulk_quote;     静态类型和动态类型不一致
+delete itemP;               调用Bulk_quote的析构函数
+
+如果基类的析构函数不是虚函数 则delete一个指向派生类对象的基类指针将产生未定义的行为
+
+之前说的如果一个类需要析构函数 那么它同样也需要拷贝和赋值操作 对基类的析构不适用
+
+虚析构函数 将阻止合成的移动操作  Quote没有移动操作意味着它的派生类也没有
+
+合成拷贝控制与继承
+基类或派生类的合成拷贝控制成员行为 与 其他合成的拷贝构造函数 赋值运算符 或析构函数类似
+
+派生类中删除的拷贝控制 与 基类的关系
+class B
+{
+public:
+	B();
+	B(const B&) = delete;
+	// 其他成员 不含有移动构造函数
+};
+class D : public B
+{
+	/*没有任何构造函数*/
+}
+D d;                 正确 D的合成默认构造函数 使用B的默认构造函数
+D d2(d);             错误 D的合成拷贝构造函数 是被删除的
+D d3(std::move(d));  错误 隐式的使用D的被删除的拷贝构造函数
+
+基类B含有一个可访问的默认构造函数和一个显式删除的 拷贝构造函数 因为我们定义了拷贝构造函数
+所以编译器将不会为B合成一个移动构造函数 
+因此我们既不能移动也不能拷贝B的对象 派生类也无法移动和拷贝基类部分的成员
+
+移动操作和继承
+因为基类缺少移动操作 会阻止派生类拥有自己的合成移动操作 所以当我们确实需要
+执行移动操作时 首先应该在基类中定义
+
+class Quote
+{
+public:
+	Quote() = default;                        对成员依次进行默认初始化
+	Quote(const Quote&) = default;            对成员依次拷贝
+	Quote(Quote&&) = default;                 对成员依次拷贝
+	Quote& operator=(const Quote&) = default; 拷贝赋值 
+	Quote& operator=(Quote&&) = default;      拷贝赋值
+	virtua1 ~Quote() = default;
+	// 其他成员与之前一致
+};
+
+我们就能对Quote的对象逐成员的分别进行拷贝 移动 赋值 和 销毁了 
+而且除非Quote的派生类中含有排斥移动的成员 否则它将自动获得合成的移动操作
+
+派生类的拷贝控制成员
+当派生类定义了拷贝或移动操作符时 该操作负责拷贝或移动包括基类部分成员在内的整个对象
+
+析构函数只负责销毁派生类自己分配的资源
+
+定义派生类的拷贝或移动构造函数
+
+class Base {/**/};
+class D : public Base
+{
+public:
+	// 默认情况下 基类的默认构造函数 初始化 对象的基类部分
+	// 想要使用拷贝或移动构造函数 我们必须在构造函数初始值列表中 显式调用该构造函数
+	D(const D& d): Base(d) /*D的成员初始值*/ { }
+	D(D&& d): Base(std::move(d)) /*D的成员初始值*/ { }
+};
+
+Base的拷贝构造函数 负责将d的基类部分拷贝给要创建的对象
+
+D(const D& d) /*成员初始值 但是没有提供基类初始值*/{ }
+基类部分被默认初始化 而不是拷贝  
+新构建的对象中 Base成员被赋予了默认值 D成员的值则是从其他对象拷贝得来的
+ 
+默认情况下 基类的默认构造函数 初始化 对象的基类部分
+想要使用拷贝或移动构造函数 我们必须在构造函数初始值列表中 显式调用该构造函数
+
+派生类赋值运算符
+派生类的赋值运算符也必须显式地为其基类部分赋值
+
+D &D::operator=(const D &rhs)
+{
+	Base::operator=(rhs);  基类部分赋值
+	// 为派生类成员赋值
+	// 酌情处理自赋值 释放已有资源等
+	return *this;
+}
+
+派生类析构函数
+class D: public Base
+{
+	// Base::base()被自动调用执行
+	~D(); {/**/}
+}
+对象销毁的顺序与其创建的顺序相反 派生类析构函数首先执行 然后是基类的析构函数
+
+在构造函数和析构函数中调用虚函数
+如果构造函数或析构函数调用了某个虚函数 则我们应该执行与 构造函数与析构函数 所属类型相对应的虚函数版本
+
+继承的构造函数
+新标准 派生类能够重用其直接基类定义的构造函数
+class Bulk_quote : public Disc_quote
+{
+pubilc:
+	using Disc_quote::Disc_quote;  继承Disc_quote 的构造函数 
+	double net_price(std::size_t) const;
+};
+对于基类的每个构造函数 编译器都在派生类中生成一个形参列表完全相同的构造函数
+编译器生成的构造函数形如：
+dervied(parms) : base(args) { }
+
+在Bulk_quote类中 继承的构造函数等价
+Bulk_quote(const std::string& book, double price,
+			std::size_t qty, double disc):
+			Disc_quote(book, price, qty, disc) { }
+
+如果派生类有自己的数据成员 则这些成员将被默认初始化
+
+继承的构造函数的特点
+一个构造函数的using 声明不会改变该构造函数的访问级别
+using声明语句不能指定 explicit 和 constexpr
+基类默认实参不会被继承
+如果一个类只含有继承的构造函数 则它也拥有一个合成的默认构造函数
+
+
+容器与继承
+vector<Quote> basket;
+basket.push_back(Quote("0-201-82470-1", 50));
+
+正确 但是只能把对象的 Quote部分拷贝给basket
+basket.push_back(Bulk_quote("0-201-54848-8", 50, 10, .25));
+
+调用Quote定义的版本 打印750 即 15 * 50
+cout << basket.back().net_price(15) << endl;
+
+basket的元素是 Quote对象 因此当我们向该vector中添加一个 Bulk_quote对象
+它的派生类部分被忽略掉了
+容器和存在继承关系的类型无法兼容
+
+在容器中放置(智能)指针而非对象
+
+vector<shared_ptr<Quote>> basket;
+basket.push_back(make_shared<Quote>("0-201-82470-1", 50));
+basket.push_back(make_shared<Bulk_quote>("0-201-54848-8", 50, 10, .25));
+调用Quote定义的版本 打印 562.5 即在15*50中扣掉折扣金额
+cout << basket.back->net_price(15) << endl;
+
+第二个push_back 传入的是 Bulk_quote 对象的 shared_ptr
+正如我们可以将一个派生类的普通指针转换成基类指针一样
+我们也能把一个派生类的智能指针转换成基类的智能指针
+make_shared<Bulk_quote> 返回一个 shared_ptr<Bulk_quote> 对象
+当我们调用push_back 时 该对象被转换为 shared_ptr<Quote>
+
+尽管形式上有差别 实际上 basket的所有元素的类型都是相同的
+
+
+编写basket类 购物篮
+class Basket
+{
+public:
+	// Basket 使用合成的默认构造函数和拷贝控制成员
+	void add_item(const std::shared_ptr<Quote> &sale)
+	{
+		items.insert(sale);
+	}
+	double total_receipt(std::ostream&) const;
+private:
+	// 比较shared_ptr, multiset 成员会用到
+	static bool compare(const std::shared_ptr<Quote> &lhs,
+						const std::shared_ptr<Quote> &rhs)
+	{
+		return lhs->isbn() < rhs->isbn();
+	}
+	// multiset保存多个报价  按照compare成员排序
+	std::multiset<std::shared_ptr<Quote>, decltype(compare)*> items(compare);
+};
+
+
+定义Basket的成员
+double Basket::total_receipt(std::ostream &os) const
+{
+	double sum = 0.0;
+	for (auto iter = items.cbegin(); iter != items.cend(); iter = items.upper_bound(*iter))
+	{
+		sum += print_total(os, **iter, items.count(*iter));
+	}
+	os << "total sale: " << sum << endl;
+	return sum;
+}
+upper_bound返回一个迭代器 该迭代器指向这批元素的尾后指针
+当我们解引用iter后得到的是一个指向准备打印的对象的shared_ptr
+为了得到这个对象必须再解引用 shared_ptr
+print_total 调用了虚函数net_price 因此最终的计算结果依赖于 **iter的动态类型
+
+隐藏指针
+Basket 的用户仍然必须处理动态内存 原因是add_item 需要接受一个 shared_ptr参数
+因此用户不得不按照如下形式编写代码：
+Basket bsk;
+bsk.add_item(make_shared<Quote>("123", 45));
+bsk.add_item(make_shared<Bulk_quote>("345", 45, 3, .15));
+
+重新定义add_item 使得它接受一个 Quote对象而非 shared_ptr
+void add_item(const Quote& sale);  拷贝给定的对象
+void add_item(Quote&& sale);       移动给定的对象
+
+模拟虚拷贝
+class Quote
+{
+public:
+	virtual Quote* clone() const & {return new Quote(*this);}  /*返回当前对象的一份动态分配的拷贝*/
+	virtual Quote* clone() const && { return new Quote(std::move(*this)); }
+};
+
+class Bulk_quote : public Quote
+{
+	Bulk_quote* clone() const & {return new Bulk_quote(*this);}
+	Bulk_quote* clone() const && {return new Bulk_quote(std::move(*this));}	
+};
+
+因为我们拥有 add_item的拷贝和移动版本 所以我们分别定义clone的左值和右值版本
+每个clone分配当前类型的新对象 其中 const左值引用成员将它自己拷贝给新分配的对象
+右值引用成员则将自己移动到新数据中
+
+class Basket
+{
+public:
+	void add_item(const Quote& sale)   拷贝给定的对象
+	{
+		item.insert(std::shared_ptr<Quote>(sale.clone()));
+	}
+	void add_item(Quote&& sale)        移动给定的对象
+	{
+		item.insert(std::shared_ptr<Quote>(std::move(sale).clone()));
+	}
+};
+
+我们的clone是一个虚函数 sale的动态类型决定了到底运行Quote的函数 还是 Bulk_quote的函数 
+因为shared_ptr支持派生类向基类的类型转换 所以我们能把 shared_ptr<Quote> 绑定到 Bulk_quote*上
+
+文本查询程序再探
+
+继承和组合
+在设计良好的类体系当中 公有派生类的对象 应该可以用在任何需要基类对象的地方
+
+Query q = Query("fiery") & Query("bird") | Query("wind");
+
+Query_base类 和 Query类 
+
+抽象基类
+class Query_base
+{
+	friend class Query;
+protected:
+	using line_no = TextQuery::line_no;                    用于eval函数
+	virtual ~Query_base() = default;
+private:
+	virtual QueryResult eval(const TextQuery&) const = 0;  返回与当前Query匹配的QueryResult
+	virtual std::string rep() const = 0;                   rep表示查询一个string
+};
+
+class Query
+{
+	friend Query operator~(const Query &);
+	friend Query operator|(const Query&, const Query&);
+	friend Query operator&(const Query&, const Query&);
+public:
+	Query(const std::string&);   构建一个新的WordQuery
+	QueryResult eval(const TextQuery &t) const    接口函数 调用对应的Query_base操作
+	{
+		return q->eval(t);
+	}
+	std::string rep() const
+	{
+		return q->rep();
+	}
+private:
+	Query(std::shared_ptr<Query_base> query): q(query) { }
+	std::shared_ptr<Query_base> q; 
+};
+运算声明成友元 是因为这些运算符需要访问那个私有构造函数
+Query操作使用它的 Query_base指针来调用各自的 Query_base虚函数
+实际调用哪个版本的 将由 q所指的对象类型决定 运行时才能确定
+
+Query的输出运算符
+std::ostream & operator << (std::ostream &os, const Query &query)
+{
+	// Query::rep通过它的 Query_base指针 对rep() 进行了虚调用
+	return os << query.rep();
+}
+Query andq = Query(sought1) & Query(sought2);
+cout << andq << endl;
+输出运算符将调用 andq 的Query::rep 而 rep 通过它的 Query_base指针 
+虚调用 Query_base版本的rep 因为 andq 指向的是一个AndQuery 对象
+所以本次的函数调用将运行 AndQuery::rep
