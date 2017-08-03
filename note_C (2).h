@@ -6445,3 +6445,159 @@ cout << andq << endl;
 输出运算符将调用 andq 的Query::rep 而 rep 通过它的 Query_base指针 
 虚调用 Query_base版本的rep 因为 andq 指向的是一个AndQuery 对象
 所以本次的函数调用将运行 AndQuery::rep
+
+派生类
+WordQuery 类
+class WordQuery : public Query_base
+{
+	friend class Query;    Query使用WordQuery的构造函数
+	WordQuery(const std::string &s): query_word(s) { }
+	QueryResult eval(const TextQuery &t) const
+	{
+		return t.query(query_word);
+	}
+	std::string rep() const { return query_word; }
+	std::string query_word;	   要查找的单词
+};
+WordQuery将定义所有继承而来的纯虚函数
+WordQuery没有公有成员 Query必须作为WordQuery的友元才能访问Query的构造函数
+inline Query::Query(const std::string &s): q(new WordQuery(s)) { }
+这个构造函数分配一个WordQuery然后令其指针成员指向新分配的对象
+
+NotQuery类及~运算符
+class NotQuery: public Query_base
+{
+	friend Query operator~(const Query &);
+	NotQuery(const Query &q): query(q) { }
+	std::string rep() const { return "~(" + query.rep() + ")"; }
+	QueryResult eval(const TextQuery&) const;
+	Query query;
+};
+inline Query operator~(const Query &operand)
+{
+	return std::shared_ptr<Query_base>(new NotQuery(operand));
+}
+query.rep() 是对Query类rep成员的非虚调用 接着Query::rep 将调用 q->req()
+这是通过 Query_base指针进行的虚调用
+
+~运算符动态分配一个新的NotQuery对象 其return语句等价于
+shared_ptr<Query_base> tmp(new NotQuery(expr));
+return Query(tmp);  使用接受一个 shared_ptr的 Query构造函数 
+
+BinaryQuery类
+BinaryQuery类是一个抽象基类
+
+class BinaryQuery : public Query_base
+{
+protected:
+	BinaryQuery(const Query &l, const Query &r, std::string s):
+				lhs(l), rhs(r), opSym(s) { }
+	std::string rep() const 
+	{
+		return "(" + lhs.rep() + " " + opSym + " " + rhs.rep() + ")";
+	}
+	Query lhs, rhs;     左右侧运算符对象
+	std::string opSym;  运算符的名字
+};
+BinaryQuery 构造函数负责接受两个运算对象和一个运算符符号 然后将他们存储在对应的数据成员中
+对rep的调用最终是对 lhs 和rhs 所指Query_base对象的rep函数进行虚调用
+
+BinaryQuery不定义eval 而是继承了该纯虚函数 因此 BinaryQuery也是一个抽象基类
+我们不能创建BinaryQuery的对象
+
+AndQuery类 OrQuery类 及相应的运算符
+class AndQuery : public BinaryQuery
+{
+	friend Query operator&(const Query&, const Query&);
+	AndQuery(const Query &left, const Query &right): BinaryQuery(left, right, &) { }
+	QueryResult eval(const TextQuery&) const;
+};
+inline Query operator&(const Query& lhs, const Query& rhs)
+{
+	return std::shared_ptr<Query_base>(new AndQuery(lhs, rhs));
+}
+
+class OrQuery : public BinaryQuery
+{
+	friend Query operator|(const Query&, const Query&);
+	OrQuery(const Query &left, const Query &right): BinaryQuery(left, right, |) { }
+	QueryResult eval(const TextQuery&) const;
+};
+inline Query operator|(const Query& lhs, const Query& rhs)
+{
+	return std::shared_ptr<Query_base>(new OrQuery(lhs, rhs));
+}
+和~运算符一样 &和|运算符也返回一个绑定到新分配对象上的shared_ptr
+在这些运算符中 return语句负责将 shared_ptr 转换成 Query
+
+eval函数
+OrQuery::eval
+QueryResult OrQuery::eval(const TextQuery& text) const
+{
+	auto right = rhs.eval(text), left = lhs.eval(text); /*返回每个对象的 QueryResult*/
+	/*将左侧运算对象的行号拷贝到结果set中*/
+	auto ret_lines = make_shared<set<line_no>>(left.begin(), left.end());
+	/*插入右侧运算对象所得的行号*/
+	ret_lines->insert(right.begin(), right.end());
+	/*返回一个新的 QueryResult 他表示lhs 和 rhs的交集*/
+	return QueryResult(rep(), ret_lines, left.get_file());
+}
+
+AndQuery::eval
+QueryResult AndQuery::eval(const TextQuery& text) const
+{
+	auto left = lhs.eval(text), right = rhs.eval(text);
+	auto ret_lines = make_shared<set<line_no>>();
+	set_intersection(left.begin(), left.end(), 
+					right.begin(), right.end(),
+					inserter(*ret_lines, ret_lines->begin()));
+	return QueryResult(rep(), ret_lines, left.get_file());
+}
+set_intersection 标准库算法 合并两个set 最后一个实参表示目的位置
+上述调用我们传入一个插入迭代器
+
+NotQuery::eval
+QueryResult NotQuery::eval(const TextQuery& text) const
+{
+	auto result = query.eval(text);                  通过Query运算对象对eval虚调用
+	auto ret_lines = make_shared<set<line_no>>();    开始时结果set为空
+	auto beg = result.begin(), end = result.end();
+
+	对于输入文件中的每一行 如果该行不在result当中 则将其添加到ret_lines   
+	auto sz = result.get_file()->size();
+	for (size_t n = 0; n != sz; ++n)     
+	{
+		if (beg == end || *beg != n)
+			ret_lines->insert(n);
+		else if (beg != end)
+			++beg;
+	}
+	return QueryResult(rep(), ret_lines, result.get_file());
+}
+result中包含的是运算对象出现的行号 
+
+###### 第十六章 模板和泛型编程 ######
+
+定义模板
+函数模板
+template <typename T>
+int compare(const T &v1, const T &v2)
+{
+	if (v1 < v2) return -1;
+	if (v1 > v2) return 1;
+	return 0;
+}
+模板定义 以关键字template 开始 后跟一个模板参数列表 这是一个逗号分隔的一个或多个 模板参数的列表
+在模板定义中 模板参数列表不能为空
+
+cout << compare(1, 0) << endl; T 为int
+vector<int> vec1{1, 2, 3}, vec2{4, 5, 6};
+cout << compare(vec1, vec2) << endl;
+
+模板类型参数
+template <typename T> T foo(T* p)
+{
+	T tmp = *p;
+	// 
+	return tmp;
+}
