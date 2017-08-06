@@ -6834,8 +6834,61 @@ partNo<Vehicle> cars;  cars  是一个pair<Vehicle, unsigned>
 partNo<Student> kids;  kids  是一个pair<Student, unsigned>
 
 类模板的static成员
+template <typename T> class Foo 
+{
+public:
+	static std::size_t count() { return ctr; }
+private:
+	static std::size_t ctr;
+};
+Foo<string> fs;
+Foo<int> f1, f2, f3;
+所有三个对象共享相同的Foo<int>::cnt Foo<int>::count 成员
+一个static成员函数 只有在使用时才会被实例化
 
-十六章太痛苦了！！！！看不下去！！！！
+模板参数可用范围是 在其声明之后 置模板声明或定义之前
+模板声明必须包含模板参数
+一个特定文件所需要的所有模板的声明通常一起放置在文件开始位置
+出现在任何使用这些模板的代码之前
+template <typename T>
+typename T::value_type top(const T& c)
+{
+	if (!c.empty)
+		return c.back();
+	else
+		return typename T::value_type();
+}
+当我们希望通知编译器一个名字表示类型时 必须使用关键字typename 而不是class
+
+默认模板实参
+template <typename T, typename F = less<T>>
+int compare(const T &v1, const T &v2, F f = F())
+{
+	if (f(v1, v2)) return -1;
+	if (f(v2, v1)) return 1;
+	return 0;
+}
+定义一个新的函数参数f 绑定到一个可以调用对象上
+
+模板默认实参与类模板
+template <class T = int> class Numbers
+{
+public:
+	Numbers(T v = 0) : val(v) { }
+private:
+	T val;
+}
+Numbers<long double> lots_of_precision;
+Numbers<> average_precision;  默认类型
+
+控制实例化 
+extern template declartion;   实例化声明
+template declartion;          实例化定义
+
+extern template class Blob<string>;
+template int compare(const int&, const int&);
+
+对每个实例化声明 在程序中某个位置必须有其显式的实例化定义
 
 ###### 第十七章 标准库特殊设施 ######
 tuple类型
@@ -7549,3 +7602,122 @@ namespace primer = cplusplus_primer;
 
 namespace Qlib = cplusplus_primer::QueryLib;
 Qlib::Query q;
+
+using指示引入的名字的作用域 远比using 声明引入的名字的作用复杂
+
+namespace blip
+{
+	int i = 16; j = 15; k = 23;
+}
+int j = 0;
+void mainip()
+{
+	using namespace blip; blip中的名字被添加到全局作用域中
+	如果使用了j 则将在::j 和 blip::j 之间产生冲突
+	++i;         将blip::i 设定为17		
+	++j;	     二义性错误  全局j 还是 blip::j 
+	++::j;       正确 全局j
+	++blip::j;   正确 将blip::j 设定为16
+	int k = 97;  当前局部k隐藏了 blip::k 
+	++k;	     将当前局部的k设定为98
+}
+
+类 命名空间 和 作用域
+
+namespace A
+{
+	int i;
+	namespace B
+	{
+		int i;     在B中隐藏了 A::i 
+		int j;      
+		int f1()
+		{
+			int j;  j是f1的局部变量  隐藏了A::B::j
+			return i;  返回B::i
+		}
+	}
+	int f2()
+	{
+		return j;   错误 j没有被定义
+	}
+	int j = i;   用A::i 进行初始化 
+}
+
+namespace A
+{
+	int i;
+	int k;
+	class C1
+	{
+	public:
+		C1(): i(0), j(0) { }    正确初始化 C1::i C1::j
+		int f1() { return k; }  返回A::k 
+		int f2() { return h; }  错误 h未定义
+		int f3();
+	private:
+		int i;   C1中隐藏了A::i 
+		int j;
+	};
+
+	int h = i;    A::i 初始化
+}
+
+int A::C1::f3() {return h;} 返回 A::h 
+
+可以从函数的限定名推断出查找名字时 检查作用域的次序 
+限定名以相反的次序指出被查找的作用域
+
+多重继承和虚继承
+虚派生只影响从指定了 虚基类的派生类中进一步派生出的类
+它不会影响派生类本身
+
+使用虚基类
+class Reccoon : public virtual ZooAnimal {/**/};
+class Bear : virtual public ZooAnimal {/**/};
+在后续的派生类当中共享虚基类的同一份实例
+class Panda : public Bear, public Reccoon, public Endangered {/**/};
+Panda 通过 Reccoon 和 Bear继承了 ZooAnimal 
+因为Reccoon 和 Bear虚继承自  ZooAnimal 
+所以在Panda中只有一个ZooAnimal 基类部分
+
+支持向基类的常规类型转换
+
+
+当创建一个Bear 或 Reccoon 的对象时 它已经位于派生的最低层
+Bear::Bear(std::string name, bool onExhibit): ZooAnimal(name, onExhibit, "Bear") { }
+Reccoon::Reccoon(std::string name, bool onExhibit): ZooAnimal(name, onExhibit, "Raccoon") { }
+
+当创建一个Panda对象时 Panda位于派生类的最低层
+Panda::Panda(std::string name, bool onExhibit)
+	: ZooAnimal(name, onExhibit, "panda"),
+	  Bear(name, onExhibit),
+	  Raccoon(name, onExhibit),
+	  Endangered(Endangered::critical),
+	  sleeping_flag(false) { }
+
+虚基类总是先于非虚基类构造 与它们在继承体系中 的次序和位置无关
+
+class Character {/**/};
+class BookCharacter : public Character {/**/};
+class ToyAnimal {/**/};
+class TeddyBear : public BookCharacter, public Bear, public virtual ToyAnimal {/**/};
+
+
+构造顺序
+ZooAnimal()       Bear 的虚基类
+ToyAnimal()       直接虚基类
+Character()       第一个非虚基类 的间接基类
+BookCharacter()   第一个 直接 非虚基类
+Bear()            第二个 直接 非虚基类
+TeddyBear()       最低层派生类
+
+
+###### 第十九章  特殊工具与技术 ######
+指定enum的大小
+enum intValues : unsigned long long 
+{
+	charTyp = 255, shortTyp = 65535, intTyp = 65535,
+	longTyp = 4294967295UL,
+	long_longTyp = 18446744073709551615ULL;
+}
