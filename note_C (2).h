@@ -6595,9 +6595,957 @@ vector<int> vec1{1, 2, 3}, vec2{4, 5, 6};
 cout << compare(vec1, vec2) << endl;
 
 模板类型参数
+// 返回类型和参数类型相同
 template <typename T> T foo(T* p)
 {
-	T tmp = *p;
-	// 
+	T tmp = *p; /*tmp的类型将是指针p指向的类型*/
+	// 。。。
 	return tmp;
 }
+
+类型参数前必须使用关键字class 或 typename
+template <typename T, class U> calc (const T&, const U&)
+
+非类型模板参数
+一个非类型参数表示一个值而非一个类型
+template<unsigned N, unsigned M>
+int compare(const char(&p1)[N], const char(&p2)[M])
+{
+	return strcmp(p1, p2);
+}
+compare("hi", "mom");
+编译器会使用字面常量的大小来代替N和M
+编译器实例化出如下版本
+int compare(const char (&p1)[3], const char (&p2)[4])
+一个非类型参数可以是一个整型 或是一个指向对象或函数类型的指针或引用
+绑定到非类型整型参数的实参 必须是一个常量表达式
+绑定到指针或引用 非类型参数的实参必须具有静态的生存期
+
+非类型模板参数的模板实参 必须是常量表达式 
+
+inline 和 constexpr 的函数模板
+
+template<typename T> inline T min(const T&, const T&);
+
+编写类型无关的代码
+编写泛型代码的两个重要原则
+1.模板中的函数参数是const的引用
+2.函数体中的条件判断仅使用<比较运算
+
+template <typename T> int compare(const T &v1, const T &v2)
+{
+	if (less<T>()(v1, v2)) return -1;
+	if (less<T>()(v2, v1)) return 1;
+	return 0;
+}
+less<T>的默认实现用的就是<
+模板程序应该尽量减少对实参类型的要求
+
+模板的头文件通常即包括声明也包括定义
+函数模板 和 类模板成员函数的定义 通常放在头文件
+
+模板包含两种名字
+那些不依赖与模板参数的名字
+那些依赖于模板参数的名字
+
+模板的设计者 应该提供一个头文件 包含[模板定义]以及 在[类模板或成员定义]中用到的所有名字的声明
+模板的用户   必须包含模板的头文件 以及用来实例化模板的任何类型的头文件
+
+保证传递给模板的实参支持模板 所要求的操作 以及这些操作在模板中能正确工作 是调用者的责任
+
+
+类模板
+template <typename T> class Blob
+{
+public:
+	typedef T value_type;
+	typedef typename std::vector<T>::size_type size_type;
+
+	Blob();
+	Blob(std::initializer_list<T> il);
+	size_type size() const { return data->size(); }
+	bool empty const { return data->empty(); }
+
+	void push_back(const T &t) { data->push_back(t); }
+	void push_back(T &&t) { data->push_back(std::move(t)); }
+	void pop_back();
+	T& back();
+	T& operator[](size_type i);
+private:
+	std::shared_ptr<std::vecotr<T>> data;
+	void check(size_type i, const std::string &msg) const;
+};
+
+除了模板参数列表和使用T代替string 之外 此类模板的定义与之前一样
+
+Blob<int> ia;  空Blob<int>
+Blob<int> ia2 = {0,1,2,3,4};   有5个元素的Blob
+当编译器从我们的Blob模板实例化出一个类时 它会重写Blob模板
+一个类模板的每个示例都形成一个独立的类 
+
+类模板的名字不是一个类型名 类模板用来实例化类型 而一个实例化的类型总是包含模板参数的
+
+当我们定义一个成员函数时 模板实参与模板形参相同
+StrBlob 给定的成员函数
+ret-type StrBlob::member-name(parm-list)	
+
+对应的Blob的成员应该是
+template <typename T> 
+ret-type Blob<T>::member-name(parm-list)
+
+template <typename T>
+void Blob<T>::check(size_type i, const std::string &msg) const
+{
+	if (i >= data->size())
+		throw std::out_of_range(msg);
+}
+
+template <typename T>
+T& Blob<T>::back()
+{
+	check(0, "back on empty blob");
+	return data->back();
+}
+
+template <typename T>
+T& Blob<T>::operator[](size_type i)
+{
+	check(i, "subscript out of range");
+	return (*data)[i];
+}
+
+template <typename T>
+void Blob<T>::pop_back()
+{
+	check(0, "pop_back on empty Blob");
+	data->pop_back;
+}
+
+构造函数
+template <typename T>
+Blob<T>::Blob(): data(std::make_shared<std::vector<T>>()) { }
+
+template <typename T>
+Blob<T>::Blob(std::initializer_list<T> il):
+				data(std::make_shared<std::vector<T>>(il)) { }
+
+Blob<string> articles = {"a", "an", "the"};
+构造函数的参数类型为 initializer_list<string> 列表中每个字符常量隐式地转换成string
+
+类模板成员的实例化
+Blob<int> squares = {0,1,2,3,4,5,6,7,8,9};
+
+实例化Blob<int>::size() const
+for (size_t i = 0; i != squares.size(); ++i)
+{
+	squares[i] = i * i;		 实例化 Blob<int>::operator[](size_t)
+} 
+
+默认情况下 对于一个实例化了的类模板 其成员只有在使用时才被实例化
+
+在类模板自己的作用域中 我们可以直接使用模板名而不提供实参
+template <typename T> class BlobPtr
+{
+public:
+	BlobPtr(): curr(0) { }
+	BlobPtr(Blob<T> &a, size_t sz = 0):
+			wptr(a.data), curr(sz) { }
+	T& operator*() const
+	{
+		auto p = check(curr, "dereference past end");
+		return (*p)[curr];
+	}
+	BlobPtr& operator++();
+	BlobPtr& operator--();
+private:
+	std::shared_ptr<std::vector<T>>
+			check(std::size_t, const std::string&) const;
+	std::weak_ptr<std::vector<T>> wptr;
+	std::size_t curr;
+};
+BlobPtr的前置递增和递减成员返回 BlobPtr& 而不是 BlobPtr<T>&
+
+后置 递增递减对象但返回原值
+template <typename T>
+BlobPtr<T> BlobPtr<T>::operator++(int)
+{
+	BlobPtr ret = *this;
+	++*this;
+	return ret;
+}
+
+类模板和友元
+// 前置声明 在Blob声明友元所需要
+template <typename> class BlobPtr;
+template <typename> class Blob;  /*运算符==中的参数所需要*/
+template <typename T> bool operator==(const Blob<T>&, const Blob<T>&); 
+template <typename T> class Blob
+{
+	// 每个Blob实例将访问权限授予用相同类型实例化 的BlobPtr 和 相等运算符
+	friend class BlobPtr<T>;
+	friend bool operator==<T> (const Blob<T>&, const Blob<T&);
+}
+
+Blob<int> ia;  BlobPtr<int>  operator==<int> 都是本对象的友元
+Blob<char> ca; BlobPtr<char>  operator==<char> 都是本对象的友元
+
+ca 对 ia 或 Blob 的任何其他实例都没有特殊访问权限
+
+通用和特定的模板友好关系
+一个类也可以将另一个模板的每个实例都声明为自己的友元
+或者限定特定的实例为友元
+
+template <typename T> class Pal;
+class C/*普通非模板类*/
+{
+	friend class Pal<C>; /*用类C实例化Pal是C的一个友元*/
+	/*Pal2的所有实例都是C的友元 这种情况无须前置声明*/
+	template <typename T> friend class Pal2;
+};
+
+template <typename T> class C2  /*C2 本身是一个类模板*/
+{
+	// C2的每个实例将相同实例化的Pal声明为友元
+	friend class Pal<T>; /*Pal的模板声明必须在作用域之内*/
+	/*Pal2的所有实例都是C2的每个实例的友元 不需要前置说明*/
+	template <typename X> friend class Pal2;
+	/*Pal3是一个非模板类 它是C2所有实例的友元*/
+	friend class Pal3;	/*不需要Pal3的前置声明*/
+};
+为了让所有实例成为友元 友元声明中 必须用 与类模板本身不同的 模板参数
+
+令模板自己的类型参数成为友元
+template <typename Type> class Bar
+{
+	friend 	Type; /*将访问权限授予用来实例化Bar的类型*/
+}
+
+模板类型别名
+typedef Blob<string> StrBlob;
+由于模板不是一个类型 我们不能定义一个 typedef 引用一个模板 即无法定义一个typedef引用Blob<T>
+
+新标准
+template<typename T> using twin = pair<T, T>;
+twin<string> authors; authors 是一个pair<string, string>
+
+template <typename T> using partNo = pair<T, unsigned>
+partNo<string> books;  books 是一个pair<string, unsigned>
+partNo<Vehicle> cars;  cars  是一个pair<Vehicle, unsigned>
+partNo<Student> kids;  kids  是一个pair<Student, unsigned>
+
+类模板的static成员
+
+十六章太痛苦了！！！！看不下去！！！！
+
+###### 第十七章 标准库特殊设施 ######
+tuple类型
+一个快速而随意的数据结构
+
+定义和初始化tuple
+tuple<size_t, size_t, size_t> threeD;
+tuple<string, vector<double>, int, list<int>> someVal("constants", {3.14, 2.718}, 42, {0,1,2,3,4,5});
+tuple 这个函数是 explicit 的 因此我们必须使用直接初始化方法
+
+tuple<size_t, size_t, size_t> threeD = {1,2,3}  错误
+
+auto item = make_tuple("0-999-78345-x", 3, 20.00); 
+item 类型是一个 tuple<const char*, int, double>
+
+auto book = get<0>(item);   返回item的第一个成员
+auto cnt = get<1>(item);    返回item的第二个成员
+auto price = get<2>(item);  返回item的第三个成员
+get<2>(item) *= 0.8;        打折20%
+
+查询tuple成员的数量和类型
+typedef decltype(item) trans; trans是 item的类型 
+size_t sz = tuple_size<trans>::value;   3
+cnt 的类型与item中的第二个成员相同
+tuple_element<1, trans>::type cnt = get<1>(item);  cnt是个int
+
+为了使用tuple_size 和 tuple_element 我们需要知道一个tuple对象的类型
+与往常一样 确定一个对象的类型最简单的方法是 decltype
+
+tuple_size 有个名为 value的 public static 成员 它表示给定tuple中成员的数量
+tuple_element 模板除了一个tuple类型外 还接受一个索引值
+它有一个名为type的 public成员 表示给定 tuple类型中指定成员的类型
+
+关系和相等运算符
+tuple的关系和相等运算符 的行为类似容器的对应操作
+tuple<string, string> duo("1", "2");
+tuple<size_t, size_t> twoD(1, 2);
+bool b = (duo == twoD);       /*错误 不能比较size_t 和 string*/
+tuple<size_t, size_t, size_t> threeD(1,2,3);
+b = (twoD < threeD);          /*错误 成员数量不同*/
+tuple<size_t, size_t> origin(0, 0);
+b = (origin < twoD);         /*正确 b为true*/
+
+由于tuple定义了 <  == 运算符 我们可以将tuple序列 传递给算法 
+并且可以在无序容器中将tuple作为关键字类型
+
+使用 tuple返回多个值
+我们编写一个函数 对于给定的一本书 在file中搜索出售过这本书的书店 
+对每家有匹配记录的书店 我们将创建一个 tuple来保存这家书店的索引 和两个迭代器
+
+索引指出书店在file中的位置
+而两个迭代器则标记给定书籍在此书店的 vector<Sales_data> 中第一条销售记录和最后一条销售记录之后的位置
+
+vector<vector<Sales_data>> files; files 中的每个元素保存一家书店的销售记录
+typedef tuple<vector<Sales_data>::size_type,
+				vector<Sales_data>::const_iterator,
+				vector<Sales_data>::const_iterator> matches;
+
+vector<matches>
+findBook(const vector<vector<Sales_data>> &files,
+			const string &book)
+{
+	vector<matches> ret;
+	for (auto it = files.cbegin(); it != files.cend(); ++it)
+	{
+		auto found = equal_range(it->cbegin(), it->cend(), book, compareIsbn);
+		if (found.first != found.second)  /*此书店销售了给定书籍*/
+		/*记住此书店的索引及匹配的范围*/
+			ret.push_back(make_tuple(it - files.cbegin(), found.first, found.second));
+	}
+	return ret;
+}
+
+使用函数返回的tuple
+void reportResults(istream &in, ostream &os, const vector<vector<Sales_data>> &files)
+{
+	string s;
+	while (in >> s)
+	{
+		auto trans = findBook(files, s);
+		if (trans.empty())
+		{
+			cout << s << "not found in any stores" << endl;
+			continue;
+		}
+		for (const auto &store : trans)
+		{
+			os << "store" << get<0>(store) << "sales: "
+			<< accumulate(get<1>(store), get<2>(store), Sales_data(s)) << endl;
+		}
+	}
+}
+Sales_data定义了加法运算符 因此我们可以用标准库的 accumulate 来累加销记录
+Sales_data接受一个string 利用构造函数初始化 将此对象传给 accumulate 作为求和的起点
+
+
+bitset类型
+使得位运算的使用更加容易 能够处理超过最长整型类型大小的位集合 bitset类定义在头文件 bitset 
+
+bitset<32> bitvec(1U); 32位 低位为1 其他位 为 0
+bitvec包含编号从0到31的32个二进制位 编号从0开始 的二进制为被称为 低位
+编号到31结束的二进制位 被称为 高位
+
+用unsigned值初始化bitset
+0xbeef b是高位 f是低位
+bitset<13> bitvec1(0xbeef);  高位被丢弃 1 1110 1110 1111 
+bitset<20> bitvec2(0xbeef);  高位被置0 0000 1011 1110 1110 1111 
+bitset<128> bitvec3(~0ULL);  在64位机器中 long long 0ULL 是64个0比特 因此~0ULL 是64个1
+0-63 位为1 63-127位为 0
+
+从一个string 初始化bitset
+我们使用字符串表示数时 字符串中下标最小的字符 对应高位 反之亦然
+bitset<32> bitvec4("1100"); 2,3两位为1 剩余两位为0
+
+string的下标编号习惯与 bitset相反 string中下标最大的字符 用来初始化bitset中的低位
+string str("1111111000000011001101");
+bitset<32> bitvec5(str, 5, 4);  从str[5] 开始的四个二进制位  1100
+bitset<32> bitvec6(str, str.size() - 4);  使用最后四个字符
+
+bitset操作
+bitset<32> bitvec(1U);             32位 低位为1 剩余位 为0
+bool is_set = bitvec.any();        true
+bool is_not_set = bitvec.none();   false
+bool all_set = bitvec.all();       false 
+size_t onBits = bitvec.count();    返回1
+size_t sz = bitvec.size();         返回32
+bitvec.flip();                     翻转bitvec中的所有位
+bitvec.reset();                    将所有位 复位
+bitvec.set();                      将所有位 置位
+
+操作count 和size 返回size_t 类型的值 分别表示对象中 置位的位数 和总位数
+
+bitvec.flip(0);					翻转第一位
+bitvec.set(bitvec.size() - 1);  置位最后一位
+bitvec.set(0, 0);				复位第一位
+bitvec.reset(i);				复位第i位
+bitvec.test(0);					返回false
+
+下标运算符对const属性进行了重载 const版本的下标运算符 在指定位置时返回true
+否则返回false
+bitvec[0] = 0;          将第一位复位
+bitvec[31] = bitvec[0]; 将最后一位设置为与第一位一样
+bitvec[0].flip();       翻转第一位
+~bitvec[0];			    等价操作 也是翻转第一位
+bool b = bitvec[0];     将bitvec[0] 的值转换为bool类型
+
+to_ulong toullong都返回一个值保存了与bitset对象相同的位模式
+只有当bitset的大小小于等于对应的大小
+unsigned long ulong = bitvec3.to_ulong();
+cout << "ulong = " << ulong << endl;
+
+如果bitset中的值 不能放入给定类型中 则这两个操作会抛出一个overflow_error 异常
+
+bitset<16> bits;
+cin >> bits;
+cout << "bits: " << bits << endl;
+
+使用bitset
+用bitset代替unsigned long
+bool status;
+unsigned long quizA = 0;
+
+quizA |= 1UL << 27;           指出27个学生通过了测试
+status = quizA & (1UL << 27); 检测第27个学生是否通过了测试
+quizA &= ~(1UL << 27);        第27个学生未通过测试
+
+使用bitset
+bitset<30> quizB;             每个同学分配一位 所有位都被初始化为0
+quizB.set(27);                指出第27位学生通过了测试
+status = quizB[27];           检查第27个学生是否通过了测试
+quizB.reset(27);              第27个学生未通过测试
+
+
+正则表达式
+定义在regex中 它包含多个组件
+使用正则表达式库
+查找i除非在c之后 否则必须在e之前的 单词 
+string pattern("[^c]ei");    /*查找不在字符串c之后的字符串 ei*/
+pattern = "[[:alpha:]]*" + pattern + "[[:alpha:]]*"; /*我们需要包含pattern的整个单词*/
+regex r(pattern);   /*构造一个用于查找模式的regex*/
+smatch results;     /*定义一个对象保存搜索结果*/
+/*定义一个string 保存与模式匹配和不匹配的文本*/
+string test_str = "receipt freind theif receive";
+if (regex_search(test_str, result, r))  /*如果有匹配子串*/
+	cout << results.str() << endl;    /*打印匹配的单词*/  freind
+
+regex_search只要找到一个匹配子串就会停止查找
+
+指定regex对象的选项
+// 一个或多个字母 或数字字符后接一个.  再接cpp cxx cc 之一
+regex r("[["alnum:"]] + \\.(cpp|cxx|cc)$", regex::icase);
+smatch results;
+string filename;
+while (cin >> filename)
+{
+	if (regex_search(filename, results, r))
+		cout << results.str() << endl;
+}
+
+第一个反斜线去掉C++中反斜线的特殊含义 第二个反斜线则表示在正则表达式中去掉.的特殊含义
+
+指定或使用正则表达式时的错误
+一个正则表达式的语法是否正确是在运行时解析的
+
+try
+{
+	regex r("[["alnum:"] + \\.(cpp|cxx|cc)$", regex::icase);
+}catch (regex_error e)
+{
+	cout << c.what() << "\ncode: " << e.code() << endl;
+}
+程序生成
+regex_error(error_brack):
+the expression contained mismatched [ and ]
+code: 4
+
+避免创建不必要的正则表达式
+构造一个regex对象以及向一个已存在的regex赋予一个新的正则表达式可能非常耗时
+
+regex r("[["alnum:"] + \\.(cpp|cxx|cc)$", regex::icase);
+smatch results;								输入为char*
+if (regex_search("myfile.cc", result, r))
+{
+	cout << result.str() << endl;
+}
+
+cmatch results;
+if (regex_search("myfile.cc", result, r))
+{
+	cout << result.str() << endl;     打印当前匹配
+}
+
+匹配与regex迭代器类型
+string pattern("[^c]ei");
+pattern = "[[:alpha:]]*" + pattern + "[[:alpha:]]*";
+regex r(pattern, regex::icase);
+for (sregex_iterator it(file.begin(), file.end(), r), end_it; it != end_it; ++it)
+{
+	cout << it->str() << endl;
+}
+将it初始化为第一个匹配位置 
+for 循环遍历file中每个与r匹配的子串 for语句中的初始值定义了it 和 end_it
+当我们定义it时 sregex_iterator的构造函数调用 regex_search来推进迭代器
+当我们解引用迭代器 会得到一个表示当前匹配结果的smatch对象
+
+for (sregex_iterator it(file.begin(), file.end(), r), end_it;
+		it != end_it; ++it)
+{
+	auto pos = it->prefix().length();				前缀的大小
+	pos = pos > 40 ? pos - 40 : 0;					我们想要最多40个字符
+	cout << it->prefix().str().substr(pos)          前缀的最后一个部分
+		 << "\n\t\t>>> " << it->str() << "<<< \n"   匹配的单词
+		 << it->suffix().str().substr(0, 40)		后缀的第一部分
+		 << endl;
+}
+
+prefix 和 suffix 分别返回表示输入序列中当前匹配之前和之后的部分ssub_match对象
+一个ssub_match对象有两个名为 str和length的成员
+
+使用子表达式
+([[:alnum:]]+)  匹配一个或多个字符的序列
+(cpp|cxx|cc)    匹配文件扩展名
+
+我们还可以重写
+if (regex_search(filename, result, r))
+	cout << results.str(1) << endl; 打印第一个子表达式
+
+与第一个子表达式匹配的部分
+如文件名 foo.cpp 
+results.str(0) = foo.cpp
+results.str(1) = foo
+results.str(2) = cpp
+
+后接 ？的组件是可选的
+子表达式1 3 4 6 可选 2 5 7 保存号码
+"(\\()?(\\d{3})(\\))?([-. ])?(\\d{3})([-. ]?)(\\d{4})"
+(\\()? 区号部分可选的左括号
+(\\))? 区号部分可选的右括号
+
+string phone = 
+	"(\\()?(\\d{3})(\\))?([-. ])?(\\d{3})([-. ]?)(\\d{4})";
+regex r(phone);
+smatch m;
+string s;
+while (getline(cin, s))
+{
+	for (sregex_iterator it(s.begin(), s.end(), r), end_it;
+			it != end_it; ++it)
+	{
+		if (valid(*it))
+			cout << "valid: " << it->str() << endl;	
+		else
+			cout << "not valid: " << it->str() << endl;
+	}
+}
+
+每个smatch 对象会包含八个ssub_match元素 位置0 整个匹配
+位置1 - 7 表示每个对应的子表达式
+
+bool valid(const smatch& m)
+{
+	if (m[1].matched)      如果区号有一个左括号
+		return m[3].matched   如果区号有一个右括号
+				&& (m[4].matched == 0 || m[4].str() == " ");
+	else
+		return !m[3].matched    如果区号没有右括号
+				&& m[4].str() == m[6].str();
+}
+
+我们先检查第一个子表达式 即左括号是否匹配 在m[1]中
+
+使用regex_replace
+string fmt = "$2.$5.$7"; 将号码格式化为 ddd.ddd.dddd
+regex r(phone);
+string number = "(908) 555-1800";
+cout << regex_replace(number, r, fmt) << endl;   908.555.1800
+
+替换大文件
+int main()
+{
+	string phone = 
+	"(\\()?(\\d{3})(\\))?([-. ])?(\\d{3})([-. ]?)(\\d{4})";
+	regex r(phone);
+	smatch m;
+	string s;
+	string fmt = "$2.$5.$7";
+	while (getline(cin, s))
+	{
+		cout << regex_replace(s, r, fmt) << endl;
+	}
+	return 0;
+}
+
+用来控制匹配 和 格式的标志
+为了使用 regex_constants 中的名字 
+我们必须在名字前同时加上 两个命名空间的限定符 
+using std::regex_constants::format_no_copy;
+using namespace std::regex_constants;
+
+使用格式标志
+只生成电话号码 使用新的格式字符串
+string fmt2 = "$2.$5.$7 ";  在最后一部分号码后面放置空格作为分隔符
+// 通知regex_replace 只拷贝它替换的文本
+cout << regex_replace(s, r, fmt2, format_no_copy) << endl;
+不输出输入序列中未匹配的部分
+
+
+随机数
+C++不应该使用库rand 而应该使用default_random_engine类 和 恰当的分布类对象
+
+随机数 库的组成
+引擎    类型，生成随机unsigned整数序列
+分布    类型，使用引擎返回服从特定概率分布的随机数
+
+随机数引擎和分布
+default_random_engine e;   生成随机无符号数
+for (size_t i = 0; i < 10; ++i)
+{
+	cout << e() << " ";
+}
+
+分布类型和引擎
+uniform_int_distribution<unsigned> u(0, 9);
+default_random_engine e;
+for (size_t i = 0; i < 10; ++i)
+{
+	cout << u(e) << " ";
+}
+0 1 7 4 5 2 0 6 6 9
+u作为随机数源
+每个调用返回在指定范围内服从均匀分配的值
+u 定义为 uniform_int_distribution<unsigned> 生成均匀分布的unsigned值
+
+类似引擎类型 分布类型也是函数对象类
+当我们说 随机数发生器时 是指分布对象 和 引擎对象 的组合
+
+cout << "min: " << e.min() << "max: " << e.max() << endl;
+min: 1 max: 2147483646
+
+引擎生成一个数值序列
+几乎肯定的是生成随机整数vector的错误方法
+每次调用这个函数都会生成相同的100 个数
+vector<unsigned> bad_randVec()
+{
+	default_random_engine e;
+	uniform_int_distribution<unsigned> u(0, 9);
+	std::vector<unsigned> ret;
+	for (size_t i = 0; i < 100; ++i)
+	{
+		ret.push_back(u(e));
+	}
+	return ret;
+}
+
+编写此函数的正确方法是将引擎和关联的分布对象定义为static
+vector<unsigned> good_randVec()
+{
+	static default_random_engine e;
+	static uniform_int_distribution<unsigned> u(0, 9);
+	vector<unsigned> ret;
+	for (size_t i = 0; i < 10; ++i)
+	{
+		ret.push_back(u(e));
+	}
+	return ret;
+}
+
+一个给定的随机数发生器一直会生成相同的随机数序列
+一个函数如果定义了局部的随机数发生器 应该将其定义为static
+否则每次调用函数都会生成相同的序列
+
+设置随机数发生器种子
+种子就是一个数值 引擎可以利用它从序列中一个新位置重新开始生成随机数
+
+两种方法设置种子
+default_random_engine e1;			   使用的默认种子
+default_random_engine e2(2147483646);  给定的种子值
+
+default_random_engine e3;
+e3.seed(32767);
+default_random_engine e4(32767);
+前两个引擎e1 和 e2的种子不同 因此应该生成不同的序列 后两个引擎e3 e4有相同的种子
+它们将生成相同的序列
+
+default_random_engine e1(time(0)); 稍微随机些的种子
+
+其他随机数分布
+生成随机实数
+default_random_engine e;
+uniform_real_distribution<double> u(0, 1);
+for (size_t i = 0; i < 10; ++i)
+{
+	cout << u(e) << " ";
+}
+uniform_real_distribution<> u(0, 1); 默认生成double值
+
+生成非均匀分布的随机数
+default_random_engine e;
+normal_distribution<> n(4, 1.5);    均值4 标准差1.5
+vector<unsigned> vals(9);           九个元素都为0
+for (size_t i = 0; i != 200; ++i)
+{
+	unsigned v = lround(n(e));      舍入到最接近的整数
+	if (v < vals.size())			如果结果在范围内
+		++vals[v];					统计出每个数出现了多少次
+}
+for (size_t j = 0; j != vals.size(); ++j)
+{
+	cout << j << ": " << string(vals[j], '*') << endl;
+}
+
+bernoulli_distribution 类
+
+string resp;
+default_random_engine e;
+bernoulli_distribution b;
+do
+{
+	bool first = b(e);
+	cout << (first ? "we go first": "you get to go first") << endl;
+	cout << ((play(first)) ? "sorry you lost" : "congrats you won") << endl;
+	cout << "play again ? Enter 'yes' or 'no'" << endl;
+}while (cin >> resp && resp[0] == 'y');
+
+分布对象也要保持状态 因此也应该在循环外定义
+bernoulli_distribution b(.55) 给程序一个微小的优势
+
+
+IO库再探
+标准库定义了一组操纵符来修改流的格式状态
+当操作符改变流的格式状态时，通常改变后的状态对所有后续IO都生效
+
+cout << "default bool values: " << true << " " << false                    1 0
+	<< "\nalpha bool values" << boolalpha << true << " " << false << endl; true false 
+
+bool bool_val = get_status();
+cout << boolalpha << bool_val   设置cout的内部状态
+	<< noboolalpha;    内部状态恢复为默认状态
+
+cout << "default: " << 20 << " " << 1024 << endl;               20 1024  
+cout << "octal: " << oct << 20 << " " << 1024 << endl;          24 2000  8进制
+cout << "hex: " << hex << 20 << " " << 1024 << endl;            14 400   16进制
+cout << "decimal: " << dec << 20 << " " << 1024 << endl;        20 1024  改回10进制
+操纵符hex oct dec只影响整型运算对象 浮点值的表示形式不受影响
+
+cout << showbase;
+cout << "default: " << 20 << " " << 1024 << endl;               20 1024  
+cout << "octal: " << oct << 20 << " " << 1024 << endl;          024 02000  
+cout << "hex: " << hex << 20 << " " << 1024 << endl;            0x14 0x400   
+cout << "decimal: " << dec << 20 << " " << 1024 << endl; 		20 1024
+cout << noshowbase;
+
+uppercase操纵符来输出大写的X 并将16进制数字a-f以大写输出
+cout << uppercase << showcase << hex
+		<< "print in hexadecimal: " << 20 << " " << 1024 << endl; 
+	 << nouppercase << noshowbase << dec << endl;
+
+指定打印精度
+cout << "precision: " << cout.precision()
+	<< ", Value: " << sqrt(2.0) << endl;     6   1.41421
+cout.precision(12);    /*打印精度设置为12位数字*/
+cout << "precision: " << cout.precision() 
+	<< ", Value: " << sqrt(2.0) << endl;     12  1.41421356237
+cout.setprecision(3);  /*另一种设置精度的方法*/
+cout << "precision: " << cout.precision()
+	<< ", Value: " << sqrt(2.0) << endl;	 3   1.41
+
+指定浮点数记数法 除非你需要控制浮点数的表示形式 否则由标准库选择记数法是最好的选择
+
+cout << "default format: " << 100 * sqrt(2.0) << '\n'                 141.421
+	 << "scientific: " << scientific << 100 * sqrt(2.0) << '\n'       1.414214e+002
+	 << "fixed decimal: " << fixed << 100 * sqrt(2.0) << '\n'		  141.421356
+	 << "hexadecimal: " << hexfloat << 100 * sqrt(2.0) << '\n'        0x1.1ab7bcp+7
+	 << "use defaults: " << defaultfloat << 100 * sqrt(2.0) << '\n'   141.421
+
+打印小数点
+showpoint
+输出补白
+setw 指定下一个数字或字符串值的最小空间
+left 左对齐
+right 右对齐
+internal 控制负数的符号位置 左对齐符号 右对齐值
+setfill 允许指定一个字符代替默认的空格来补白输出
+
+控制输入格式
+cin >> noskipws;
+while (cin >> ch)
+{
+	cout << ch;
+}
+cin >> skipws;
+>>>>>
+a b     c
+d 
+<<<<<
+a b     c
+d
+
+未格式化的输入输出操作
+单字节
+char ch;
+while (cin.get(ch))
+	cout.put(ch);
+
+会读取而不是忽略空白
+
+从输入操作返回的int 值
+int ch;
+while ((ch = cin.get()) != EOF)
+{
+	cout.put(ch);
+}
+
+多字节操作
+get和getline 函数接受相同的参数
+他们的行为类似但不相同
+在两个函数中 sink都是一个char数组 用来保存数据
+两个函数都一直读取数据 直到下面条件之一发生
+1.已读取了 size-1 个字符
+2.遇到了文件尾
+3.遇到了分隔符
+get将分隔符留作istream中的下一个字符
+getline则读取并丢弃分隔符
+
+流随机访问 适用于 fstream sstream
+随机IO本质上是依赖于系统的 为了理解如何使用这种特性 你必须查询系统文档
+
+seek 和 tell函数
+一个函数通过将标记seek到一个给定位置 来重定位它
+另一个函数tell我们标记的当前位置
+
+由于只有单一的标记 因此只要我们在读写操作间 切换 就必须进行seek操作来重定位标记
+
+seekg(new_position);  将读标记移动到指定的 pos_type类型的位置
+seekp(new_position);  将写标记移动到指定的 pos_type类型的位置
+
+seekg(offset, from);  将读标记移动到距from偏移量为offset的位置
+seekp(offset, from);  将写标记移动到距from偏移量为offset的位置
+
+访问标记
+ostringstream writeStr;							   输出stringstream
+ostringstream::pos_type mark = writeStr.tellp();   记住当前写位置
+// ...
+if (cancelEntry)
+{
+	回到刚才记住的位置
+	writeStr.seekp(mark);
+}
+
+int main()
+{
+	fstream inOut("copyOut", fstream::ate|fstream::in|fstream::out);
+	if (!inOut)
+	{
+		cerr << "unable to open file " << endl;
+		return EXIT_FAILURE;
+	}
+	// inout以ate模式打开 因此一开始就定义到其文件尾
+	auto end_mark = inOut.tellg();  /*记住源文件尾位置*/
+	inOut.seekg(0, fstream::beg);   /*重定位到文件开始*/
+	size_t cnt = 0;					/*	字节数累加器*/
+	string line;  /*保存每行*/
+	while (inOut && inOut.tellg() != end_mark /*还在读取原数据*/
+			&& getline(inOut, line))		/*还可以获取一行输入*/
+	{
+		cnt += line.size() + 1;  /*加1表示换行符*/
+		auto mark = inOut.tellg(); /*记住读取位置*/
+		inOut.seekp(0, fstream::end); /*写标记移动到文件尾*/
+		inOut << cnt;		/*输出累计的长度*/
+		if (mark != end_mark) inOut << " ";
+		inOut.seekg(mark);  /*恢复读位置*/
+	}
+	inOut.seekp(0, fstream::end);  /*定位到文件尾*/
+	inOut << "\n";
+	return 0;
+}
+
+###### 第十八章 用于大型程序的工具 ######
+
+异常处理
+一个异常如果没有被捕获 则它将终止当前的程序
+
+
+命名空间
+命名空间为防止名字冲突提供了更加可控的机制
+命名空间分割了全局命名空间 且每个命名空间是作为一个作用域的
+namespace cplusplus_primer
+{
+	class Sales_data {/**/};
+	Sales_data operator+(const Sales_data&, const Sales_data&);
+	class Query {/**/};
+	class Query_base {/**/};
+}/*无须分号*/
+
+命名空间可以不连续
+
+命名空间的一部分成员的作用是定义类 以及声明作为类接口的函数和对象
+这些成员应该放置到头文件中 这些头文件将被包含在使用了这些成员的文件中
+命名空间成员的定义部分则置于另外的源文件中
+
+定义多个类型不相关的命名空间应该使用单独的文件分别表示每个类型 
+
+// Sales_data.h
+#include <string>
+namespace cplusplus_primer
+{
+	class Sales_data {/**/};
+	Sales_data operator+(const Sales_data&, const Sales_data&);
+	class Query {/**/};
+	class Query_base {/**/};
+	// Sales_data 的其他接口函数声明
+}
+
+// Sales_data.cc
+#include "Sales_data.h"
+namespace cplusplus_primer
+{
+	/*Sales_data 成员及重载运算符的定义*/
+}
+
+#include "Sales_data.h"
+
+int main()
+{
+	using cplusplus_primer::Sales_data;
+	Sales_data trans1, trans1;
+	// ...
+	return 0;
+}
+
+全局命名空间
+全局作用域中定义的名字被隐式地添加到全局命名空间中
+
+::member_name
+表示全局命名空间中的一个成员
+
+嵌套的命名空间
+namespace cplusplus_primer
+{
+	namespace QueryLib
+	{
+		class Query {/**/};
+		Query operator&(const Query&, const Query&);
+	}
+	namespace Bookstore
+	{
+		class Quote {/**/};
+		class Disc_quote : public Quote {/**/};
+	}
+}
+内层命名空间声明的名字将 隐藏 外层命名空间声明的同名成员
+在嵌套的命名空间中定义的名字只能在内层命名空间中生效
+外层命名空间中的代码想要访问它必须在名字前添加限定符
+如 cplusplus_primer::QueryLib::Query;
+
+内联命名空间
+inline namespace FifthEd
+{
+
+}
+namespace FifthEd
+{
+	class Query_base{/**/};
+}
+未命名的命名空间是指关键字 namespace后紧跟花括号括起来的一系列声明语句
+和其他命名空间不同 未命名的命名空间仅在特定的文件内部有效其作用范围不会横跨多个不同文件
+
+命名空间的别名
+namespace cplusplus_primer {/**/};
+namespace primer = cplusplus_primer;
+
+namespace Qlib = cplusplus_primer::QueryLib;
+Qlib::Query q;
