@@ -15,11 +15,11 @@ void reverStr(string& str, int begin, int end) {
         begin++;
         end--;
     }
-} 
+}
 
 void rev(string& str, int i) {
     reverStr(str, 0, i - 1);
-    cout << "1: " << str << endl; 
+    cout << "1: " << str << endl;
     reverStr(str, i, str.size() - 1);
     cout << "2: " << str << endl;
     reverStr(str, 0, str.size() - 1);
@@ -49,7 +49,7 @@ int partition(vector<int>& vec, int low, int high) {
         return -1;
     int flag = vec[low];
     while (low < high) {
-        while (low < high && vec[high] > flag) high--;
+        while (low < high && vec[high] >= flag) high--;
         vec[low] = vec[high];
         while (low < high && vec[low] <= flag) low++;
         vec[high] = vec[low];
@@ -63,19 +63,19 @@ int getTopk(vector<int>& vec, int k) {
         return -1;
     int low = 0;
     int high = vec.size() - 1;
-    int index = partition(vec, low, high);
-    cout << "index: " << endl;
-    while (index != k - 1) {
-        if (index > k - 1) {
-            high = index - 1;
-            index = partition(vec, low, high);
+    while (high > low) {
+        int index = partition(vec, low, high);
+        cout << "index: " << index <<endl;
+        if (k - 1 > index) {
+            low = index + 1;
         }
-        if (index < k - 1) {
-            low = high + 1;
-            index = partition(vec, low, high);
+        else if (k - 1 < index) {
+            high = index - 1;
+        }
+        else {
+            return index;
         }
     }
-    return index;
 }
 
 
@@ -83,22 +83,23 @@ int main() {
     string str = "abcdefghijklmn";
     rev(str, 3);
     cout << "after reverse:" << str << endl;
-    
-    
+
+
     map<string, vector<string> > dictory;
     addWord(dictory, "abcd");
-    addWord(dictory, "bacd");                                                                                            
+    addWord(dictory, "bacd");
     addWord(dictory, "cabd");
     addWord(dictory, "dcva");
     lookup(dictory, "abcd");
-    
+
     int arr[] = {2, 4, 7, 5, 11, 3, 5, 6, 32, 5, 2, 4};
     vector<int> vec(arr, arr + 12);
+
+    int kth = getTopk(vec, 3);
+    cout << "index:" << kth << " kthNum: " << vec[kth] << endl;
     for (auto item : vec) {
         cout << item << " ";
     }
     cout << endl;
-    int kth = getTopk(vec, 3);
-    cout << "kth: " << kth << endl;
     return 0;
 }
