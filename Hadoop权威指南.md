@@ -53,7 +53,7 @@ MapReduce三大设计目标
 
 气象数据集
 
-### 使用Hadoop来分析数据
+### **2.3 使用Hadoop来分析数据**
 
 将查询表示成MapReduce作业，完成某种本地端的小规模测试之后，就可以把作业部署到集群上运行
 
@@ -173,7 +173,7 @@ public class MaxTemperature {
 
 - > hadoop MaxTemperature input/ncdc/1901 output
 
-### 横向扩展
+### **2.4 横向扩展**
 
 为实现横向扩展，我们需要把数据存储在分布式文件系统中（HDFS），通过使用Hadoop资源管理系统YARN，Hadoop可以将MapReduce计算转移到存储有部分数据的各台机器上
 
@@ -206,3 +206,87 @@ reduce任务不具备数据本地化的优势，单个reduce任务的输入通�
 ![reduce任务](/image/reduce3.png)
 
 #### combiner函数
+
+combiner函数不能取代reduce函数，我们仍需要reduce函数来处理不同map输出中具有相同键的记录，但combiner函数能帮助减少mapper和reducer之间的数据传输量
+
+combiner是通过reducer类来定义的，在这个例子中，它的实现于MaxTemperatureReducer中的reduce函数相同，唯一改动的是job中设置combiner类
+
+```java
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+
+public class MaxTemperatureWithCombiner {
+    public static void main(String[] args) throws Exception {
+        if (args.length != 2) {
+            System.err.println("args ERROR");
+            System.exit(-1);
+        }
+
+        Job job = new Job();
+        job.setJarByClass(MaxTemperatureWithCombiner.class);
+        job.setJobName("Max temperature");
+
+        FileInputFormat.addInputPath(job, new Path(args[0]));
+        FileOutputFormat.setOutputPath(job, new Path(args[1]));
+
+        job.setMapperClass(MaxTemperatureMapper.class);
+        job.setCombinerClass(MaxTemperatureReducer.class);
+
+        job.setReducerClass(MaxTemperatureReducer.class);
+
+        job.setOutputKeyClass(Text.class);
+        job.setOutputValueClass(IntWritable.class);
+
+        System.exit(job.waitForCompletion(true) ? 0 : 1);
+    }
+}
+```
+
+### **2.5 Hadoop Streaming**
+
+Hadoop为MapReduce提供了不同的API，可以方便我们使用不同的编程语言来使用MapReduce框架，而不是只局限于Java
+
+map的输入数据通过标准输入流传递给map函数，并且是一行一行地传输，最后将结果行写到标准输出，map输出的键值对是以一个制表符分隔的行，reduce函数的输入格式与之相同，结果写入标准输出
+
+Python版本
+
+map
+
+```python
+import re
+import sys
+
+for line in sys.stdin:
+    val = line.strip()
+    (year, temp, q) = (val[15:19], val[87:92], val[92:93])
+    if (temp != "+9999" and re.match("[01459]", q)):
+        print "%s\t%s" % (year, temp)
+```
+
+reduce
+
+```python
+import sys
+
+(last_key, max_val) = (None, -sys.maxint)
+for line in sys.stdin:
+  (key, val) = line.strip().split("\t")
+  if last_key and last_key != key:
+    print "%s\t%s" % (last_key, max_val)
+    (last_key, max_val) = (key, int(val))
+  else:
+    (last_key, max_val) = (key, max(max_val, int(val)))
+
+if last_key:
+  print "%s\t%s" % (last_key, max_val)
+```
+
+执行命令
+
+cat input/ncdc/sample.txt | ch02-mr-intro/src/main/python/max_temperature_map.py | ch02-mr-intro/src/main/python/max_temperature_reduce.py 
+
+## 第三章 Hadoop分布式文件系统
