@@ -290,3 +290,131 @@ if last_key:
 cat input/ncdc/sample.txt | ch02-mr-intro/src/main/python/max_temperature_map.py | ch02-mr-intro/src/main/python/max_temperature_reduce.py 
 
 ## 第三章 Hadoop分布式文件系统
+
+`管理网络中跨多台计算机存储的文件系统称为分布式文件系统`
+
+### **3.1 HDFS设计**
+
+- 超大文件
+- 流式数据访问
+  - 读取整个数据集的时间延迟比读取第一条记录的时间延迟更重要
+- 商用硬件
+- 低时间延迟的数据访问
+  - **HDFS是为高数据通途量应用优化的，可能会以提高时间延迟为代价，低延迟的数据访问HBase更适合**
+- 大量的小文件
+- 多用户写入，任意修改文件
+  - 只支持单个写入者，以添加方式在文件末尾写数据
+
+####　数据块
+
+HDFS块默认大小128MB，与磁盘传输速率有关
+
+块抽象好处：
+
+- 一个文件的大小可以大于网络中任意一个磁盘的容量
+- 以抽象块为存储单元而非整个文件，大大简化了存储子系统的设计 
+
+#### namenode 和 datanode
+
+- namenode：管理节点，管理文件系统的命名空间，维护着文件系统树及整棵树内所有的文件和目录，这些信息以来个那个文件形式永久保存在本地磁盘上 **命名空间镜像文件（namespace image）** **编辑日志文件（edit log）**
+- datanode：工作节点，根据需要存储并检索数据块，定期向namenode发送它们所存储的块的列表
+
+namenode两种容错机制：
+
+1. 备份哪些组成文件系统元数据持久状态的文件，一般配置是将持久状态写入本地磁盘的同时，写入一个远程挂载的网络文件系统
+2. 运行一个辅助namenode，但它不能被用作namenode，定期合并编辑日志与命名空间镜像
+
+#### 块缓存
+
+通常datanode从磁盘中读取块，但对于访问频繁的文件，其对应的块可能被显式地缓存在datanode的内存中
+
+#### 联邦HDFS
+
+允许系统通过添加namenode实现扩展，其中每个namenode管理文件系统命名空间中的一部分
+
+集群中的datanode需要注册到每个namenode，并且存储着来自多个数据块池中的数据块
+
+#### HDFS的高可用性（High Availability）
+
+namenode失效，新的namenode直到满足以下情形才能响应服务：
+
+- 将命名空间的映射导入内存中
+- 重演编辑日志
+- 接受到足够多的来自datanode的数据块报告并退出安全模式
+
+**活动-备用namenode**：当活动namenode失效，备用namenode就会接管它的任务并开始服务于来自客户端的请求，实现这一目标需要在架构上修改：
+
+- namenode之间通过高可用共享存储实现编辑日志的共享
+- datanode需要同时向两个namenode发送数据块处理报告
+- 客户端需要使用特定的机制来处理namenode的失效问题
+- 辅助namenode的角色被备用namenode所包含，备用的namenode为活动的namenode命名空间设置周期性检查点
+
+![Namenode](image/activeNamenode.png)
+
+**Namenode高可用架构** [参考文章](https://www.ibm.com/developerworks/cn/opensource/os-cn-hadoop-name-node/index.html
+)
+
+- Active NameNode和Standby NameNode：两台NameNode形成互备，前者为主NameNode，后者为备NameNode，只有主NameNode才能对外提供读写服务
+- 主备切换控制器ZKFailoverController：对NameNode的主备切换进行总体控制，监控NameNode的健康状况，在主NameNode故障时借助ZooKeeper实现自动的主备选举和切换
+- Zookeeper集群：为主备切换控制器提供主备选举支持
+- 共享存储系统：保存了NameNode在运行过程中产生的HDFS元数据。主备NameNode通过该系统实现元数据同步
+- DataNode节点：同时向主备NameNode上报数据块的位置信息
+
+##### *NameNode主备切换实现*
+
+由ZKFailoverController，HealthMonitor和ActiveStandbyElector这三个组件协同完成
+
+ZKFailoverController（zkfc）启动的时候会创建HealthMonitor和ActiveStandbyElector这两个主要的内部组件，创建的同时也会向两者注册相应的回调方法
+
+HealthMonitor主要负责检测NameNode的健康状态，发现NameNode状态变化会回调ZKFailoverController的方法进行自动的主备选举
+
+ActiveStandbyElector主要负责完成自动的主备选举，内部封装了Zookeeper的处理逻辑，一点Zookeeper主备选举完成，会回调ZKFailoverController的方法进行NameNode的主备状态转换
+
+NameNode 实现主备切换的流程如图，有以下几步：
+
+![NameNodeswitch](image/NameNodeswitch.png)
+
+1. HealthMonitor初始化完成之后会启动内部的线程来定时调用对应 NameNode的HAServiceProtocol RPC接口的方法，对NameNode的健康状态进行检测。
+2. HealthMonitor如果检测到NameNode的健康状态发生变化，会回调ZKFailoverController注册的相应方法进行处理。
+3. 如果ZKFailoverController判断需要进行主备切换，会首先使用ActiveStandbyElector来进行自动的主备选举。
+4. ActiveStandbyElector与Zookeeper进行交互完成自动的主备选举。
+5. ActiveStandbyElector在主备选举完成后，会回调ZKFailoverController的相应方法来通知当前的NameNode成为主 NameNode或备NameNode。
+6. ZKFailoverController调用对应NameNode的HAServiceProtocol RPC接口的方法将NameNode转换为Active状态或Standby状态。
+
+##### *NameNode的共享存储实现*
+
+###### NameNode的元数据存储概述
+
+NameNode在执行HDFS客户端提交的创建文件或移动文件这样的写操作的时候，会首先把这些操作记录在EditLog中，然后更新内存中的文件系统镜像。
+
+- 内存中的文件系统镜像用于NameNode向客户端提供读服务
+- EditLog仅仅是数据恢复时起作用
+
+EditLog中的每一个操作称为事务，EditLog被切割为很多段每一段称为Segment
+
+NameNode会定期对内存中的文件系统镜像进行checkpoint操作，在磁盘上生成FSImage文件
+
+NameNode启动时会进行数据恢复，首先把FSImage文件加载到内存中形成文件系统镜像，然后再把EditLog之中FSImage的结束事务id之后的EditLog回放到这个文件系统中
+
+###### 基于QJM的共享系统的总体架构
+
+![qjm](image/qjm.png)
+
+**NameNode:**
+- FSEditLog：这个类封装了对 EditLog 的所有操作，是 NameNode 对 EditLog 的所有操作的入口。
+- JournalSet：这个类封装了对本地磁盘和 JournalNode 集群上的 EditLog 的操作，内部包含了两类 JournalManager
+  - 一类为 FileJournalManager，用于实现对本地磁盘上 EditLog 的操作。
+    - FileJornalmanager 封装了对本地磁盘上的 EditLog 文件的操作，不仅 NameNode 在向本地磁盘上写入 EditLog 的时候使用 FileJournalManager，JournalNode 在向本地磁盘写入 EditLog 的时候也复用了 FileJournalManager 的代码和逻辑。
+  - 一类为 QuorumJournalManager，用于实现对 JournalNode 集群上共享目录的EditLog的操作。
+    - 封装了对 JournalNode 集群上的 EditLog 的操作，它会根据 JournalNode 集群的 URI 创建负责与 JournalNode 集群通信的类 AsyncLoggerSet， QuorumJournalManager 通过 AsyncLoggerSet 来实现对 JournalNode 集群上的 EditLog 的写操作，对于读操作，QuorumJournalManager 则是通过 Http 接口从 JournalNode 上的 JournalNodeHttpServer 读取 EditLog 的数据。
+  - FSEditLog 只会调用 JournalSet 的相关方法，而不会直接使用 FileJournalManager 和 QuorumJournalManager。
+
+- AsyncLoggerSet：内部包含了与 JournalNode 集群进行通信的 AsyncLogger 列表，每一个 AsyncLogger 对应于一个 JournalNode 节点，另外 AsyncLoggerSet 也包含了用于等待大多数 JournalNode 返回结果的工具类方法给 QuorumJournalManager 使用。
+  - AsyncLogger：具体的实现类是 IPCLoggerChannel，IPCLoggerChannel 在执行方法调用的时候，会把调用提交到一个单线程的线程池之中，由线程池线程来负责向对应的 JournalNode 的 JournalNodeRpcServer 发送 RPC 请求。
+
+**JournalNode:**
+
+- JournalNodeRpcServer：运行在 JournalNode 节点进程中的 RPC 服务，接收 NameNode 端的 AsyncLogger 的 RPC 请求。
+- JournalNodeHttpServer：运行在 JournalNode 节点进程中的 Http 服务，用于接收处于 Standby 状态的 NameNode 和其它 JournalNode 的同步 EditLog 文件流的请求。
+
+### **3.3 命令行接口**
