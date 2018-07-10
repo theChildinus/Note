@@ -316,7 +316,7 @@ HDFS块默认大小128MB，与磁盘传输速率有关
 
 #### namenode 和 datanode
 
-- namenode：管理节点，管理文件系统的命名空间，维护着文件系统树及整棵树内所有的文件和目录，这些信息以来个那个文件形式永久保存在本地磁盘上 **命名空间镜像文件（namespace image）** **编辑日志文件（edit log）**
+- namenode：管理节点，管理文件系统的命名空间，维护着文件系统树及整棵树内所有的文件和目录，这些信息以两个文件形式永久保存在本地磁盘上 **命名空间镜像文件（namespace image）** **编辑日志文件（edit log）**
 - datanode：工作节点，根据需要存储并检索数据块，定期向namenode发送它们所存储的块的列表
 
 namenode两种容错机制：
@@ -401,6 +401,7 @@ NameNode启动时会进行数据恢复，首先把FSImage文件加载到内存�
 ![qjm](image/qjm.png)
 
 **NameNode:**
+
 - FSEditLog：这个类封装了对 EditLog 的所有操作，是 NameNode 对 EditLog 的所有操作的入口。
 - JournalSet：这个类封装了对本地磁盘和 JournalNode 集群上的 EditLog 的操作，内部包含了两类 JournalManager
   - 一类为 FileJournalManager，用于实现对本地磁盘上 EditLog 的操作。
@@ -418,3 +419,93 @@ NameNode启动时会进行数据恢复，首先把FSImage文件加载到内存�
 - JournalNodeHttpServer：运行在 JournalNode 节点进程中的 Http 服务，用于接收处于 Standby 状态的 NameNode 和其它 JournalNode 的同步 EditLog 文件流的请求。
 
 ### **3.3 命令行接口**
+
+启动HDFS：`start-dfs.sh`
+
+`hadoop fs -ls [path]`
+
+没有指定[path]的时候，在hdfs中hadoop扩展目录到 /home/[username]，其中[username]被执行命令的linux username所代替例如 
+
+`ubuntu@lenovo:~$ hadoop fs -ls`
+
+hadoop查询的路径为：/home/ubuntu
+
+`ubuntu@lenovo:~$ hadoop fs -ls hdfs://localhost:9000`
+
+hadoop查询的路径为指定的[path]，其是hdfs的根目录类似于：`ubuntu@lenovo:~$ hadoop fs -ls /`
+
+### **3.4 Hadoop文件系统**
+
+Hadoop是由Java写的，通过Java API可以调用大部分Hadoop文件系统的交互操作
+
+WebHDFS协议童工HTTP REST API使得其他语言开发的应用能够方便的于HDFS交互
+
+通过HTTP访问HDFS有两种方式
+
+- 直接访问：HDFS守护进程接收客户端的HTTP请求
+  - namenode和datanode内嵌的web服务器作为WebHDFS的端节点运行
+  - 元数据由namenode管理，文件读写先发往namenode，由namenode发送一个HTTP重定向到某个客户端，指定以流方式传输文件数据的目的或源datanode
+- 代理访问：客户端通过DistributedFileSystem API访问HDFS
+  - 所有到集群的网络通信都需要经过代理，代理服务器可以部署更加严格的防火墙策略和带宽限制策略
+
+![webHDFS](image/WebHDFS.png)
+
+### **3.5 Java接口**
+
+#### 通过URLStreamHandler访问HDFS文件
+
+```java
+import org.apache.hadoop.fs.FsUrlStreamHandlerFactory;
+import org.apache.hadoop.io.IOUtils;
+
+import java.io.InputStream;
+import java.net.URL;
+
+public class URLCat {
+    static {
+        URL.setURLStreamHandlerFactory(new FsUrlStreamHandlerFactory()); //每个java虚拟机只能调用一次这个方法
+    }
+
+    public static void main(String[] args) throws Exception {
+        InputStream in = null;
+        try {
+            in = new URL(args[0]).openStream();
+            IOUtils.copyBytes(in, System.out, 4096, false);
+        } finally {
+            IOUtils.closeStream(in);
+        }
+    }
+}
+```
+
+#### 通过FileSystem访问HDFS文件
+
+```java
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IOUtils;
+import org.apache.hadoop.fs.FileSystem;
+import sun.nio.ch.IOUtil;
+
+import java.io.InputStream;
+import java.net.URI;
+
+public class FileSystemCat {
+    public static void main(String[] args) throws Exception {
+        String uri = args[0];
+        Configuration conf = new Configuration();
+        FileSystem fs = FileSystem.get(URI.create(uri), conf);
+        InputStream in = null;
+        try {
+            in = fs.open(new Path(uri));
+            IOUtils.copyBytes(in, System.out, 4096, false);
+        } finally {
+            IOUtils.closeStream(in);
+        }
+
+    }
+}
+```
+
+### 写入数据
+
