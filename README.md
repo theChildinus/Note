@@ -15,3 +15,9 @@
 ## Hadoop权威指南
 
 [这里](/Hadoop权威指南.md)
+
+## 折腾Linux 遇到的坑
+
+[这里](/fixLinux.md)
+
+选择题好难做 / w \
