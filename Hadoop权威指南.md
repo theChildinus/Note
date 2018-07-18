@@ -305,7 +305,7 @@ cat input/ncdc/sample.txt | ch02-mr-intro/src/main/python/max_temperature_map.py
 - 多用户写入，任意修改文件
   - 只支持单个写入者，以添加方式在文件末尾写数据
 
-####　数据块
+#### 数据块
 
 HDFS块默认大小128MB，与磁盘传输速率有关
 
@@ -507,5 +507,124 @@ public class FileSystemCat {
 }
 ```
 
-### 写入数据
+#### 写入数据
 
+将本地文件复制到Hadoop文件系统，调用create()方法写入文件时会自动创建父目录
+
+```java
+import java.io.BufferedInputStream;
+import java.io.FileInputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URI;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.io.IOUtils;
+import org.apache.hadoop.util.Progressable;
+import org.apache.hadoop.fs.Path;
+
+public class FileCopyWithProgress {
+    public static void main(String[] args) throws Exception {
+        String localSrc = args[0];
+        String dst = args[1];
+        InputStream in = new BufferedInputStream(new FileInputStream(localSrc));
+
+        Configuration conf = new Configuration();
+        FileSystem fs = FileSystem.get(URI.create(dst), conf);
+        OutputStream out = fs.create(new Path(dst), new Progressable() {
+            @Override
+            public void progress() {
+                System.out.println(".");
+            }
+        });
+
+        IOUtils.copyBytes(in, out, 4096, true);
+    }
+
+}
+```
+
+#### 查询文件系统
+
+1. 文件元数据 FileStatus
+    - FileStatus封装了文件系统中文件和目录的元数据，包括文件长度、块大小、复本、修改时间、所有者以及权限信息
+
+2. 列出文件 listStatus
+
+3. 文件模式 globStatus
+    - 返回路径格式与指定模式匹配的所有FileStatus对象组成的数组，并按路径排序
+4. PathFilter对象
+    - 用于排除匹配正则表达式的路径
+
+### **3.6 数据流**
+
+#### 剖析文件读取
+
+1. 客户端调用FileSystem对象的open()方法打开希望读取的文件，对于HDFS来说，这个对象是 DistributedFileSystem 的一个实例
+2. DistributedFileSystem 通过远程过程调用(RPC)来调用namenode，确定文件起始块位置
+    - 对于每个块，namenode返回存有该块副本的datanode地址，这些datanode根据它们与客户端的距离来排序，如果该客户端本身就是一个datanode，那么该客户端将会从保存有相应数据的块副本的本地datanode中读取数据
+3. DistributedFileSystem 类返回一个FSDataInputStream对象给客户端以便读取数据，FSDataInputStream 类转而封装 DFSInputStream 对象，该对象管理着 datanode 和 namenode 的I/O，接着客户端对这个输入流调用read()方法
+4. 存储文件起始几个块的datanode地址的 DFSInputStream 随即连接距离最近的文件中第一个块所在的 datanode 通过反复调用 read() 方法，可以将数据从 datanode 传输到客户端
+5. 到达块的末端时，DFSInputStream 关闭与该 datanode的连接，然后寻找下一块最佳 datanode
+6. 客户端也会根据需要询问namenode来检索下一批数据块的 datanode 的位置，客户端读取完毕，就对FSDataInputStream调用close()方法
+
+![客户端读取HDFS中的数据](image/readdata.png)
+
+这个设计的重点是：客户端可以直接连接到datanode检索数据，由于数据分散在集群中的所有datanode中，所以这种设计能使HDFS 扩展到大量的并发客户端，同时namenode只要响应块位置的请求，无需响应数据请求，否则随着客户端的请求，namenode会成为瓶颈
+
+#### 剖析文件写入
+
+1. 客户端通过DistributedFileSystem 对象调用 create() 来新建文件
+2. DistributedFileSystem 对象调用 create() 创建一个RPC调用，在文件系统的命名空间中新建一个文件，此时此刻该文件还没有响应的数据块
+3. namenode 执行各种不同的检查以确保这个文件不存在以及客户端有新建该文件的权限，检查通过，namenode会为创建新文件记录一条记录，否则抛出IOException异常
+    - DistributedFileSystem 向客户端返回一个 FSDataOutputStream 对象，由此可以开始写入数据，FSDataOutputStream 封装一个 DFSOutpurStream 对象，该对象负责处理 datanode 和 namenode 之间的通信
+4. DFSOutputStream 将数据分成一个个数据包，写入数据队列(data
+ queue)，DataStreamer处理数据队列，它的责任是挑选出适合存储复本的一组datanode，并据此来要求namenode分配新的数据块
+5. DFSOutputStream 也维护着一个内部数据包队列来等待datanode的收到确认回执，称为确认队列(ack queue)，收到管道中所有datanode确认信息后，该数据包才会从确认队列删除
+6. 客户端完成数据的写入后，对数据流调用 close() 方法
+7. 该操作将剩余的所有数据包写入datanode管线，并在联系到namenode告知其文件写入完成之前，等待确认
+
+![客户端将数据写入HDFS](image/writedata.png)
+
+namenode 已经知道文件是由那些块组组成(因为 DataStreamer 请求分配数据块) 所以它在返回成功前只需要等待数据块进行最小量的复制
+
+#### 一致模型
+
+hflush() 方法不保证 datanode 已经将数据写到磁盘上，仅保证数据据在 datanode 的内存上
+
+hsync() 方法将数据写入到磁盘上
+
+### **3.7 通过distcp并行复制**
+
+代替 `hadoop fs -cp`
+
+`% hadoop distcp file1 file2`，也可以复制目录：`hadoop distcp dir1 dir2`
+
+`hadoop distcp -update dir1 dir2` 修改了 dir1 子树中的一个文件，将修改同步到dir2
+
+:floppy_disk:
+
+## 第四章 关于YARN
+
+Yet Another Resource Negotiator 是 Hadoop 的集群资源管理系统，最初是为了改善MapReduce的实现，但它具有足够的通用性，同样可以支持其他的分布式计算模式
+
+![yarn](image/yarn.png)
+
+### **4.1 剖析YARN应用运行机制**
+
+YARN提供核心服务的守护进程有：
+
+- 管理集群上资源使用的资源管理器
+- 运行在集群中所有节点上且能够启动和监控容器的节点管理器
+
+![yarnapp](image/yarnapp.png)
+
+1. 客户端联系资源管理器，要求它运行一个 application master 进程
+2. 资源管理器找到一个能够在容器中启动 application master 的节点管理器
+3. application mater 一旦启动起来能够做些什么依赖于应用本身，有可能是在所处的容器中简单运行一个计算，并将结果返回给客户端，或是向资源管理器请求更多的容器
+4. 以用于运行一个分布式计算
+
+YARN 本身不会为应用的各部分彼此间通信提供任何手段，大多数重要的YARN应用使用某种形式的远程通信机制 (Hadoop的RPC层) 来向客户端传递状态更新和返回结果，但是这些通信机制都是专属于各应用的
+
+#### 资源请求
