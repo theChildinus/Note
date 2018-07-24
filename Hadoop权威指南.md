@@ -144,7 +144,7 @@ public class MaxTemperature {
             System.exit(-1);
         }
         Job job = new Job();
-        // 传递一个类，Hadoop利用这个类来查找包含它的jar文件，进而找到香瓜你的jar文件
+        // 传递一个类，Hadoop利用这个类来查找包含它的jar文件，进而找到相关的jar文件
         job.setJarByClass(MaxTemperature.class);
         job.setJobName("Max temperature");
 
@@ -287,7 +287,7 @@ if last_key:
 
 执行命令
 
-cat input/ncdc/sample.txt | ch02-mr-intro/src/main/python/max_temperature_map.py | ch02-mr-intro/src/main/python/max_temperature_reduce.py 
+cat input/ncdc/sample.txt | ch02-mr-intro/src/main/python/max_temperature_map.py | ch02-mr-intro/src/main/python/max_temperature_reduce.py
 
 ## 第三章 Hadoop分布式文件系统
 
@@ -424,7 +424,7 @@ NameNode启动时会进行数据恢复，首先把FSImage文件加载到内存�
 
 `hadoop fs -ls [path]`
 
-没有指定[path]的时候，在hdfs中hadoop扩展目录到 /home/[username]，其中[username]被执行命令的linux username所代替例如 
+没有指定[path]的时候，在hdfs中hadoop扩展目录到 /home/[username]，其中[username]被执行命令的linux username所代替例如
 
 `ubuntu@lenovo:~$ hadoop fs -ls`
 
@@ -628,3 +628,202 @@ YARN提供核心服务的守护进程有：
 YARN 本身不会为应用的各部分彼此间通信提供任何手段，大多数重要的YARN应用使用某种形式的远程通信机制 (Hadoop的RPC层) 来向客户端传递状态更新和返回结果，但是这些通信机制都是专属于各应用的
 
 #### 资源请求
+
+YARN 有一个灵活的资源请求模型，当请求多个容器时，可以指定每个容器需要的计算机资源数量，还可以指定对容器的本地限制要求
+
+Spark采用在集群上启动固定数量的执行器，MapReduce则分两步走，在最开始时申请map任务容器，reduce任务容器的启动放在后期
+
+#### 应用生命期
+
+按照应用到用户运行的作业之间的映射关系对应用进行分类
+
+最简单的模型：一个用户作业对应一个应用，这是MapReduce采取的方式
+
+第二种模型：作业的每个工作流或每个用户对话对应一个应用，这种方法要比第一种情况效率高，因为容器可以在作业之间重用，并且可能缓存作业之间的中间结果，Spark采取的是这种模型
+
+第三种模型：多个用户共享一个长期运行的应用，这个应用通常作为一种协调者的角色在运行
+
+### **4.2 YARN与MapReduce 1 相比**
+
+MapReduce 1 和 YARN在组成上的比较，YARN的很多设计是为了解决MapReduce 1的局限性
+
+MapReduce 1 | YARN
+--- | ---
+Jobtracker | 资源管理器、application master、时间轴服务器
+Tasktracker | 节点管理器
+Slot | 容器
+
+使用YARN的好处包括
+
+- 可扩展性
+- 可用性
+- 利用率
+  - MapReduce 1中，每个tasktracker都配置有若干固定长度的slot，这些slot是静态分配的，在配置的时候被划分为 map slot 和 reduce slot
+  - YARN 中，一个节点管理器管理一个资源池，而不是指定数目的slot，YARN 上运行的MapReduce任务不会出现由于集群中仅有map slot可用导致reduce任务必须等待的情况
+- 多租户
+  - 最大的优点是向MapReduce以外其他类型的分布式应用开放了Hadoop
+
+### **4.3 YARN中的调度**
+
+YARN有三种调度器可用：FIFO调度器、容量调度器、公平调度器
+
+FIFO调度器
+
+- 优点是简单易懂，不行也要任何配置，但是不适合共享集群，大的应用会占用集群中的所有资源，所以每个应用必须等待直到轮到自己运行
+
+容量调度器
+
+- 一个独立的专门队列保证小作业一提交就可以启动，大作业执行时间较长
+
+公平调度器
+
+- 调度器动态平衡资源，第一个大作业启动（唯一运行的作业）获取集群中所有的资源，第二个作业启动时，它被分配到集群的一半资源，这样每个作业都能共享资源
+
+![scheduler](image/scheduler.png)
+
+用户队列间的公平共享
+
+![fairshare](image/fairshare.png)
+
+## 第五章 Hadoop的I/O操作
+
+### **5.1 数据完整性**
+
+HDFS 会对写入的所有数据计算校验和，并在读取数据时验证校验和
+
+- datanode 负责在收到数据后存储该数据及其校验和之前 对数据进行验证，管线中最后一个datanote负责验证校验和
+- 客户端从datanode 读取数据时也会验证校验和，将它们与datanode中存储的校验和进行比较
+- 每个datanode也会在一个后台线程中运行一个 DataBlockScanner，从而定期验证存储在这个 datanode 上的所有数据块
+
+#### LocalFileSystem
+
+Hadoop 的LocalFileSystem 执行客户端的校验和验证，我们也可以禁用校验和计算，特别是在底层文件系统本身就支持检验和的时候，在这种情况下，使用RawLocalFileSystem 替代 LocalFileSystem
+
+#### ChecksumFileSystem
+
+LocalFileSystem 通过 ChecksumFileSystem 来完成自己的任务，ChecksumFileSystem 类集继承自FileSystem 类，一般用法是：
+
+```java
+FileSystem rawFs = ...
+FileSystem checksummedFs = new ChecksumFileSystem(rawFs);
+```
+
+### **5.2 压缩**
+
+文件压缩的两个好处：
+
+- 减少存储文件所需要的空间
+- 加速数据在网络和磁盘上的传输
+
+#### codec
+
+codec是压缩-解压缩算法的一种实现，在Hadoop中，一个对CompressionCodec接口的事件代表一个codec
+
+##### 1. 通过CommpressionCodec对数据流进行压缩和解压缩
+
+- 对写入输出数据流的数据进行压缩，可用`createOutputStream(OutputStream out)`方法在底层的数据流中对需要以压缩格式写在此之前尚未压缩的数据新建一个CommpressionOutputStream对象
+- 对输入数据流中读取的数据解压时，调用`createInputStream(Input in)`获取CompressionInputStream可以通过该方法从底层数据流读取解压后的数据
+
+该程序压缩从标准输入读取的数据，然后将其写到标准输出
+
+```java
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.IOUtils;
+import org.apache.hadoop.io.compress.CompressionCodec;
+import org.apache.hadoop.io.compress.CompressionOutputStream;
+import org.apache.hadoop.util.ReflectionUtils;
+
+public class StreamCompressor {
+    public static void main(String[] args) throws Exception {
+        // 符合CompressionCodec 实现的完全合格名称作为第一个命令行参数
+        String codecClassname = args[0];
+        Class<?> codecClass = Class.forName(codecClassname);
+        Configuration conf = new Configuration();
+        // 使用 ReflectionUtils创建一个codec实例
+        CompressionCodec codec = (CompressionCodec)ReflectionUtils.newInstance(codecClass, conf);
+        // 并由此获得在 System.out 上支持压缩的一个包装方法
+        CompressionOutputStream out = codec.createOutputStream(System.out);
+        // 将输入数据复制到输出
+        IOUtils.copyBytes(System.in, out, 4096, false);
+        // 要求压缩方法将写操作完成到压缩数据流上，但不关闭这个数据流
+        out.finish();
+    }
+}
+```
+
+执行命令：
+
+- `export HADOOP_CLASSPATH=StreamCompressor.jar`
+- `echo "hello" | hadoop StreamCompressor org.apache.hadoop.io.compress.GzipCodec | gunzip -`
+
+##### 2. 通过CompressionCodecFactory推断 CompressionCodec
+
+根据文件拓展名选取 codec 解压文件
+
+```java
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IOUtils;
+import org.apache.hadoop.io.compress.CompressionCodec;
+import org.apache.hadoop.io.compress.CompressionCodecFactory;
+
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URI;
+
+
+public class FileDecompressor {
+
+    public void main(String[] args) throws Exception {
+        String uri = args[0];
+        Configuration conf = new Configuration();
+        FileSystem fs = FileSystem.get(URI.create(uri), conf);
+
+        Path inputPath = new Path(uri);
+        CompressionCodecFactory factory = new CompressionCodecFactory(conf);
+        CompressionCodec codec = factory.getCodec(inputPath);
+        if (codec == null) {
+            System.err.println("no codec found for " + uri);
+            System.exit(1);
+        }
+        // 除去文件拓展名，形成输出文件名
+        String outputUri = CompressionCodecFactory.removeSuffix(uri, codec.getDefaultExtension());
+
+        InputStream in = null;
+        OutputStream out = null;
+        try {
+            in = codec.createInputStream(fs.open(inputPath));
+            out = fs.create(new Path(outputUri));
+            IOUtils.copyBytes(in, out, conf);
+        } finally {
+            IOUtils.closeStream(in);
+            IOUtils.closeStream(out);
+        }
+    }
+}
+```
+
+##### 3. 原生类库
+
+为了提高性能，最好使用native类库实现压缩和解压缩
+
+##### 4. CodecPool
+
+如果使用的是原生代码库并且需要在应用中执行大量的压缩和解压缩操作，可以考虑使用CodecPool
+
+#### 压缩和输入分片
+
+文件经过gzip压缩，压缩后的文件大小为1GB，与以前一样，HDFS将这个文件保存为8个数据块，但是将每个数据块单独作为一个输入分片是无法实现工作的，因为无法实现从gzip压缩数据流的任意位置读取数据，所以让map任务独立于其他任务进行数据读取是不可行的
+
+gzip不支持文件切分
+
+bzip2 文件提供不同数据块之间的同步标识，因而它支持切分
+
+对大文件按来说，不要使用不支持切分整个文件的压缩格式，因为会失去数据的本地特性，进而造成MapReduce应用效率地下
+
+##### 对map任务输出进行压缩
+
+尽管MapReduce应用读写的是未经压缩的数据，但是map阶段的中间输入进行压缩可以获得不少好处，例如减少传输的数据量
+
+### **5.3 序列化**
