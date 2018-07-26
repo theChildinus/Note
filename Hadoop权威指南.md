@@ -2,13 +2,13 @@
 
 ## 第一章 初始Hadoop
 
-Hadoop 三种运行模式
+### Hadoop 三种运行模式
 
 - 独立（本地）模式：无需运行任何守护进程，所有程序都在同一个JVM上执行
 - 伪分布模式：Hadoop守护进程运行在本地机器上，模拟一个小规模的集群
 - 全分布模式：Hadoop守护进程运行在一个集群上
 
-###　数据的存储与分析
+### 数据的存储与分析
 
 对多个硬盘中的数据并行进行读／写，有很多问题需要解决
 
@@ -17,7 +17,7 @@ Hadoop 三种运行模式
 
 Hadoop为我们提供了一个可靠的且可拓展的存储和分析平台
 
-###　查询所有数据
+### 查询所有数据
 
 MapReduce是一个批量查询处理器，能够在合理的时间范围内处理针对整个数据集的动态查询
 
@@ -827,3 +827,439 @@ bzip2 文件提供不同数据块之间的同步标识，因而它支持切分
 尽管MapReduce应用读写的是未经压缩的数据，但是map阶段的中间输入进行压缩可以获得不少好处，例如减少传输的数据量
 
 ### **5.3 序列化**
+
+>序列化 是指将结构化对象转化为字节流以便在网络上传输或写到硬盘中进行永久存储的过程，反序列化是指将字节流转回结构化对象的逆过程
+
+序列化的是对象的状态
+
+序列化用于分布式数据处理的两大领域：
+
+- 进程间通信
+- 永久存储
+
+Hadoop中，系统中多个节点上进程间通信是通过“远程过程调用”(RPC)实现的，RPC协议将消息序列化成二进制流后发送到远程节点，远程节点接着将二进制流反序列化为原始消息，RPC序列化格式如下：
+
+- 紧凑
+  - 紧凑格式能充分利用网络带宽
+- 快速
+  - 减少序列化和反序列化的开销
+- 可扩展
+  - 为了满足新需求，协议不断变化，可读取老格式的数据
+- 支持互操作
+  - 支持不同语言写的客户端和服务器的交互
+
+#### Writable接口
+
+Writable 接口定义了两种方法
+
+- `write(DataOutput out)` 将其状态写入DataOutput二进制流
+- `readFileds(DataInput in)` 从DataInput二进制流读取状态
+
+#### Writable类
+
+##### 1. Java基本类型的Writable封装器
+
+- 定长格式编码很是和数值在整个值域空间中分布非常均匀的情况，例如哈希函数
+- 大部分数值变量的分布都不均匀，使用变长格式会更节省空间
+
+##### 2. Text类型
+
+针对UTF-8序列的Writable类，可以理解为等价于Writable类的`java.lang.String`
+
+对Text类的索引是根据编码后字节序列中的位置实现的，并非字符串中的Unicode字符，也不是 java char 的编码单元，Text的charAt返回一个该编码位置的int类型值，String返回该位置的char类型值，charAt()方法的用法
+如下：
+
+```java
+Text t = new Text("Hadoop");
+assertThat(t.getLength(), is (6));
+assertThat(t.getBytes().length, is(6));
+
+assertThat(t.charAt(2), is((int)'d'));
+assertThat("Out of bounds", t.charAt(100), is(-1));
+```
+
+Text还有一个find()方法，该方法类似于String的 indexOf()
+
+```java
+Text t = new Text("hadoop");
+assertThat("Find a substring", t.find("do"), is(2));
+assertThat("Finds first 'o'", t.find("o"), is(3));
+assertThat("Finds 'o' from position 4 or later", t.find("o", 4), is(4));
+assertThat("No match", t.find("pig"), is(-1));
+```
+
+- String 的长度是器所含char编码单元的个数，indexOf()方法返回char编码单元中的索引位置
+- Text对象的长度却是其UTF-8编码的字节数，find()方法返回字节偏移量
+- 与String另一个区别是Text是可变的，通过调用set()方法，Text通过toString()方法实现String对象
+
+##### 3. BytesWritable
+
+BytesWritable 是对二进制数据数组的封装，序列化格式为：一个指定所含数据字节数的整数域，后跟数据内容本身
+
+长度为2的字节数组包含数值3和5，序列化形式为一个4字节的整数（00000002）和该数组中的两个字节（03和05）
+
+```java
+BytesWriable b = new BytesWritable(new byte[]{3, 5});
+byte[] bytes = serialize(b);
+assertThat(StringUtils.byteToHeString(bytes), is("000000020305"));
+```
+
+BytesWritable 是可变的
+
+##### 4. NullWritable
+
+NullWritable是Writable的特殊类型，它的序列化长度为0，它并不从数据流中读取数据，也不写入数据，在MapReduce中，如果不需要使用键或值的序列化地址，就可以将键或值声明为NullWritable，这样可高效存储常量空值
+
+##### 5. ObjectWritable 和 GenericWritable
+
+ObjectWritable是对Java基本类型（String，enum，Writable，null或这些类型组成的数组）的一个通用封装，他在Hadoop RPC中用于对方法的参数和返回类型进行封装和解封装
+
+##### 6. Writable 集合类
+
+org.apache.hadoop.io 中有6个Writable集合类，分别是 ArrayWritable，ArrayPrimitiveWritable，TwoDArrayWritable，MapWritable，SortedMapWritable，EnumMapWritable
+
+- ArrayWritable 和 TwoDWritable 是对 Writable 的数组和二维数组的实现
+- ArrayPrimitiveWritable 是对java基本数组类型的一个封装
+- MapWritable，SortedMapWritable 分别实现了 java.util.Map<Writable, Writable> 和 java.util.SortedMap<WritableComparable, Writable>
+
+#### 实现定制的Writable集合
+
+有了定制的Writable类型，就可以完全控制二进制表示的排序顺序
+
+```java
+import java.io.*;
+import org.apache.hadoop.io.*;
+public class TextPair implements WritableComparable<TextPair> {
+    private Text first;
+    private Text second;
+
+    public TextPair() {
+        set(new Text(), new Text());
+    }
+
+    public TextPair(String first, String second) {
+        set(new Text(first), new Text(second));
+    }
+
+    public TextPair(Text first, Text second) {
+        set(first, second);
+    }
+
+    public void set(Text first, Text second) {
+        this.first = first;
+        this.second = second;
+    }
+
+    public Text getFirst() {
+        return this.first;
+    }
+
+    public Text getSecond() {
+        return this.second;
+    }
+
+    // 依次将每个Text对象序列化到输出流中
+    @Override
+    public void write(DataOutput out) throws IOException {
+        first.write(out);
+        second.write(out);
+    }
+
+    // 将来自输入流的字节进行反序列化
+    @Override
+    public void readFields(DataInput in) throws IOException {
+        first.readFields(in);
+        second.readFields(in);
+    }
+
+    @Override
+    public int hashCode() {
+        return first.hashCode() * 163 + second.hashCode();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (o instanceof TextPair) {
+            TextPair tp = (TextPair)o;
+            return first.equals(tp.first) && second.equals(tp.second);
+        }
+        return false;
+    }
+
+    @Override
+    public String toString() {
+        return first + "\t" + second;
+    }
+
+    @Override
+    public int compareTo(TextPair tp) {
+        int cmp = first.compareTo(tp.first);
+        if (cmp != 0) {
+            return cmp;
+        }
+        return second.compareTo(tp.second);
+    }
+}
+```
+
+##### 1. 为提高速度实现一个RawComparator
+
+当TextPair被用作MapReduce的键时，需要将数据流反序列化为对象，然后调用compareTo()方法进行比较
+
+其实我们还可以看序列化表示比较两个TextPair对象
+
+```java
+ public static class Comparator extends WritableComparator {
+        private static final Text.Comparator TEXT_COMPARATOR = new Text.Comparator();
+
+        public Comparator() {
+            super(TextPair.class);
+        }
+
+        @Override
+        public int compare(byte[] b1, int s1, int l1,
+                           byte[] b2, int s2, int l2) {
+            try {
+                // firstL1 和 firstL2 表示每个字节流中第一个Text字段的长度
+                // WritableUtils.decodeVIntSize表示变长整数的长度，readVInt表示编码值
+                int firstL1 = WritableUtils.decodeVIntSize(b1[s1]) + readVInt(b1, s1);
+                int firstL2 = WritableUtils.decodeVIntSize(b2[s2]) + readVInt(b2, s2);
+
+                int cmp = TEXT_COMPARATOR.compare(b1, s1, firstL1, b2, s2, firstL2);
+
+                if (cmp != 0) {
+                    return cmp;
+                }
+                return TEXT_COMPARATOR.compare(b1, s1 + firstL1, l1 - firstL1,
+                                                b2, s2 + firstL2, l2 - firstL2);
+            } catch (IOException e) {
+                throw new IllegalArgumentException(e);
+            }
+        }
+    }
+
+    static {
+        WritableComparator.define(TextPair.class, new Comparator());
+    }
+```
+
+##### 2. 定制的comparator
+
+定制的RawComparator用于比较TextPair对象字节表示的第一个字段
+
+```java
+    public static class FirstComparator extends WritableComparator {
+        private static final Text.Comparator TEXT_COMPARATOR = new Text.Comparator();
+
+        public FirstComparator() {
+            super(TextPair.class);
+        }
+
+        @Override
+        public int compare(byte[] b1, int s1, int l1,
+                           byte[] b2, int s2, int l2) {
+            try {
+                int firstL1 = WritableUtils.decodeVIntSize(b1[s1]) + readVInt(b1, s1);
+                int firstL2 = WritableUtils.decodeVIntSize(b2[s2]) + readVInt(b2, s2);
+
+                return TEXT_COMPARATOR.compare(b1, s1, firstL1, b2, s2, firstL2);
+            } catch (IOException e) {
+                throw new IllegalArgumentException(e);
+            }
+        }
+
+        @Override
+        public int compare(WritableComparable a, WritableComparable b) {
+            if (a instanceof TextPair && b instanceof TextPair) {
+                return ((TextPair)a).first.compareTo(((TextPair)b).first);
+            }
+            return super.compare(a, b);
+        }
+    }
+```
+
+#### 序列化框架
+
+Hadoop有一个针对可替换序列化框架的API，序列化框架用一个Serialization实现来表示，例如 WritableSerialization 类是对 Writable 类型的 Serialization 实现
+
+Serialization 对象定义了从类型到 Serializer 实例（将对象转换成为字节流）和 Deserializer实例（将字节流转换为对象） 的映射方式
+
+不建议使用 Java Object Serialization
+
+##### 序列化IDL
+
+不通过代码来定义类型，而是接口定义语言（IDL）以不依赖于具体语言的方式进行声明
+
+比较流行的序列化框架
+
+- Apache Thrift
+- Google Protocal Buffers
+- 常用作二进制数据的永久存储格式，MapReduce格式对该类的支持有限
+- Avro是一个基于IDL的序列化框架，非常适合于Hadoop的大规模数据处理
+
+### **5.4 基于文件的数据结构**
+
+需要特殊的数据结构来存储自己的数据
+
+#### 关于SequenceFile
+
+纯文本不适合记录二进制类型的数据，SequenceFile类非常适合，为二进制键-值对提供了一个持久数据结构
+
+SequenceFile也可以作为小文件的容器
+
+##### 1. SequenceFile 的写操作
+
+```java
+import java.io.IOException;
+import java.net.URI;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IOUtils;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.SequenceFile;
+import org.apache.hadoop.io.Text;
+
+public class SequenceFileWriteDemo {
+    private static final String[] DATA = {
+        "One, two, buckle my shoe",
+        "Three, four, shut the door",
+        "Five, six, pick up sticks",
+        "Seven, eight, lay them straight",
+        "Nine, ten, a big fat hen"
+    };
+
+    public static void main(String[] args) throws IOException {
+        String uri = args[0];
+        Configuration conf = new Configuration();
+        FileSystem fs = FileSystem.get(URI.create(uri), conf);
+        Path path = new Path(uri);
+        // 存储在SequenceFile中的键和值并不一定需要是Writable类型，只要能被Serialization序列化和反序列化就可以
+        IntWritable key = new IntWritable();
+        Text value = new Text();
+        SequenceFile.Writer writer = null;
+        try {
+            // 创建SequenceFile对象，返回SequenceFile.Writer实例
+            writer = SequenceFile.createWriter(fs, conf, path, key.getClass(), value.getClass());
+
+            for (int i = 0; i < 100; i++) {
+                key.set(100 - i);
+                value.set(DATA[i % DATA.length]);
+                System.out.printf("[%s]\t%s\t%s\n", writer.getLength(), key, value);
+                writer.append(key, value);
+            }
+        } finally {
+            IOUtils.closeStream(writer);
+        }
+    }
+}
+```
+
+- 运行 `start-dfs.sh` 启动HDFS
+- `export HADOOP_CLASSPATH=SequenceFileWriteDemo.jar`
+- `hadoop SequenceFileWriteDemo numbers.seq`
+
+##### 2. SequenceFile 的读操作
+
+该程序显示了如何读取包含Writable类型键值对的顺序文件
+
+```java
+import java.io.IOException;
+import java.net.URI;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IOUtils;
+import org.apache.hadoop.io.SequenceFile;
+import org.apache.hadoop.io.Writable;
+import org.apache.hadoop.io.WritableComparable;
+import org.apache.hadoop.util.ReflectionUtils;
+
+public class SequenceFileReadDemo {
+    public static void main(String[] args) throws IOException {
+        String uri = args[0];
+        Configuration conf = new Configuration();
+        FileSystem fs = FileSystem.get(URI.create(uri), conf);
+        Path path = new Path(uri);
+
+        SequenceFile.Reader reader = null;
+        try {
+            reader = new SequenceFile.Reader(fs, path, conf);
+            // getKeyClass getValueClass 发现SequenceFile中所使用的类型
+            // ReflectionUtils对象生成常见键值实例
+            Writable key = (Writable)ReflectionUtils.newInstance(reader.getKeyClass(), conf);
+            Writable value = (Writable)ReflectionUtils.newInstance(reader.getValueClass(), conf);
+            long position = reader.getPosition();
+            while (reader.next(key, value)) {
+                //  同步点
+                String syncSeen = reader.syncSeen() ? "*" : "";
+                System.out.printf("[%s%s]\t%s\t%s\n", position, syncSeen, key, value);
+                position = reader.getPosition();
+            }
+        } finally {
+            IOUtils.closeStream(reader);
+        }
+    }
+}
+```
+
+同步点是指 数据读取迷路后能够再一次与记录边界同步的数据流中的某个位置，例如在数据流中搜索而跑到任意位置后可采取此动作
+
+在顺序文件中搜索给定位置有两种方法。
+
+- 第一种是调用seek()方法，该方法将读指针指向文件中指定的位置
+
+```java
+reader.seek(359);
+assertThat(reader.next(key, value), is(true));
+assertThat(((IntWritable)key).get(), is(95));
+```
+
+- 第二种方法通过同步点查找记录边界，SequenceFile.Reader 对象的sync(long position)方法 可以将读取位置定位到position之后的下一个同步点
+
+可以将加入同步点的顺序文件作为MapReduce的输入，因为该类顺序文件允许切分，由此该文件的不同部分可以由独立的map任务单独处理
+
+MapReduce是对多个顺序文件进行排序（或合并）最有效的方法，MapReduce本身是并行的，并且可由用户指定使用多少个reducer
+
+##### SequenceFile 的格式
+
+SequenceFile 由文件头和随后一条或多条记录组成
+
+- SequenceFile的前三个字节为SEQ(顺序文件代码)
+- 紧随其后的一个字节表示SequenceFile的版本号
+- 文件头还包括其他字段，键值类的名称，数据压缩细节，用户定义的元数据以及同步标识
+
+![sequencefile](image/sequencefile.png)
+
+记录的内部结构取决于是否启用压缩，如果启用压缩，其结构取决于是记录压缩还是数据块压缩
+
+- 记录压缩格式与无压缩情况基本相同，只不过值是用文件头中定义的codec压缩的，注意，键没有被压缩
+- 块压缩是指一次性压缩多条记录，因为它可以利用记录间的相似性进行压缩
+
+![blockcompression](image/blockcompression.png)
+
+#### 关于MapFile
+
+MapFile 是已经排过序的 SequenceFile，它有索引，所以可以按键查询，索引自身就是一个 SequenceFile 包含了map中的一小部分键，主数据文件是另一个 SequenceFile，包含了所有的 map 条目，这些条目都按照键顺序进行了排序
+
+MapFile变种
+
+- SetFile
+- ArrayFile
+- BloomMapFile
+
+#### 其他文件格式和面向列的格式
+
+Avro数据文件是面向大规模数据而设计的，又是可移植的，它们可以跨越不同的编程语言使用
+
+SequenceFile，MapFile，Avro数据文件都是面向行的格式，面向列的存储布局可以使一个查询跳过那些不必访问的列
+
+面向列的文件格式有：
+
+- Hive的ORCFile
+- 基于Google Dremel的Parquet
+- Avro的Trevni
+
+## 第六章 MapReduce 应用开发
