@@ -1263,3 +1263,511 @@ SequenceFile，MapFile，Avro数据文件都是面向行的格式，面向列的
 - Avro的Trevni
 
 ## 第六章 MapReduce 应用开发
+
+MapReduce编程流程：
+
+- 首先写map函数和reduce函数，单元测试来确保函数的运行符合预期
+- 本地IDE用小的数据集来运行，调整代码
+- 程序按预期通过小型数据集的测试，就可以把它放到集群上运行了，通过扩展测试用例调试修改
+- 优化调整需要执行一些标准检查，借此加快MapReduce程序的运行速度，然后做任务剖析
+
+### **6.1 用于配置的API**
+
+Hadoop中的组件是通过Hadoop自己的配置API来配置的
+
+```java
+Configuration conf = new Configuration();
+conf.addResource("configuration-1.xml");
+```
+
+#### 资源合并
+
+后来添加到资源文件的属性会覆盖之前定义的属性，不过被标记为`final`的属性不能被后面的定义所覆盖
+
+#### 变量扩展
+
+配置属性可以用其他属性或系统属性进行定义，系统属性的优先级高于资源文件中定义的属性
+
+### **6.2 配置开发环境**
+
+#### 辅助类 GenericOptionsParser， Tool 和 ToolRunner
+
+为了简化命令行方式运行作业，Hadoop自带一些辅助类，通常不直接使用GenericOptionsParser，更方便的方式是实现Tool接口，通过ToolRunner来运行应用程序，ToolRunner内部调用 GenericOptionsParser
+
+```java
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.conf.Configured;
+import org.apache.hadoop.util.Tool;
+import org.apache.hadoop.util.ToolRunner;
+
+import java.util.Map;
+
+public class ConfigurationPrinter extends Configured implements Tool {
+
+    // 确保核心配置外的 HDFS，YARN和MapReduce配置能够被获取，因为Configuration已经获取了核心配置
+    static {
+        Configuration.addDefaultResource("hdfs-default.xml");
+        Configuration.addDefaultResource("hdfs-site.xml");
+        Configuration.addDefaultResource("yarn-default.xml");
+        Configuration.addDefaultResource("yarn-site.xml");
+        Configuration.addDefaultResource("mapred-default.xml");
+        Configuration.addDefaultResource("mapred-site.xml");
+    }
+
+    public int run(String[] args) throws Exception {
+        Configuration conf = getConf();
+        for (Map.Entry<String, String> entry : conf) {
+            System.out.printf("%s = %s\n", entry.getKey(), entry.getValue());
+        }
+        return 0;
+    }
+
+    public static void main(String[] args) throws Exception {
+        //ToolRunner.run 方法负责在调用自身的run方法之前，为Tool建立一个Configuration对象
+        int exitCode = ToolRunner.run(new ConfigurationPrinter(), args);
+        System.exit(exitCode);
+    }
+}
+```
+
+编译运行：
+
+- `mvn compile`
+- `export HADOOP_CLASSPATH=/home/kong/IdeaProjects/mymapreduce/target/classes` 注意用等号连接
+- `hadoop ConfigurationPrinter` 可以看到所有的配置信息
+
+JVM 系统属性来自于 java.lang.System，而Hadoop属性只能从 Configuration对象中获取
+
+### **6.3 用MRunit来写单元测试**
+
+pom.xml中，mrunit的 scope 字段值为 test，所以只有在工程的 test文件夹下的java文件才可以引入 import mrunit
+
+#### 关于Mapper
+
+简单测试MaxTemperatureMapper
+
+```java
+@Test
+public void processesValidRecord() throws IOException, InterruptedException {
+    Text value = new Text("0043011990999991950051518004+68750+023550FM-12+0382" +
+            "99999V0203201N00261220001CN9999999N9-00111+99999999999");
+    // 测试的是Mapper，在调用runTest之前，配置mapper，输入key-value，期望的输出key-value
+    new MapDriver<LongWritable, Text, Text, IntWritable>()
+            .withMapper(new MaxTemperatureMapper())
+            .withInput(new LongWritable(), value)
+            .withOutput(new Text("1950"), new IntWritable(-11))
+            .runTest();
+}
+```
+
+---
+v1版本的Mapper
+
+```java
+public class v1MaxTemperatureMapper extends Mapper<LongWritable, Text, Text, IntWritable> {
+
+    @Override
+    public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+        String line = value.toString();
+        String year = line.substring(15, 19);
+        int airTemperature = Integer.parseInt(line.substring(87, 92));
+        context.write(new Text(year), new IntWritable(airTemperature));
+    }
+}
+```
+
+其测试用例为：
+
+```java
+@Test
+public void ignoresMissingTemperatureRecord() throws IOException, InterruptedException {
+    Text value = new Text("0043011990999991950051518004+68750+023550FM-12+0382" +
+            "99999V0203201N00261220001CN9999999N9+99991+99999999999");
+    new MapDriver<LongWritable, Text, Text, IntWritable>()
+            .withMapper(new v1MaxTemperatureMapper())
+            .withInput(new LongWritable(0), value)
+            .runTest();
+}
+```
+
+根据withOutput被调用的次数，MapDriver能用来检查0，1 或多个输出记录，由于没有考虑到+9999这样一种特殊情况，测试失败
+
+---
+
+v2版本的Mapper，添加一个解析类
+
+```java
+public class NcdcRecordParser {
+    private static final int MISSING_TEMPERATURE = 9999;
+
+    private String year;
+    private int airTemperature;
+    private String quality;
+
+    public void parse(String record) {
+        year = record.substring(15, 19);
+        String airTemperatureString;
+        if (record.charAt(87) == '+') {
+            airTemperatureString = record.substring(88, 92);
+        } else {
+            airTemperatureString = record.substring(87, 92);
+        }
+
+        airTemperature = Integer.parseInt(airTemperatureString);
+        quality = record.substring(92, 93);
+    }
+
+    public void parse(Text record) {
+        parse(record.toString());
+    }
+
+    public boolean isValidTemperature() {
+        return airTemperature != MISSING_TEMPERATURE && quality.matches("[01459]");
+    }
+
+    public String getYear() {
+        return year;
+    }
+
+    public int getAirTemperature() {
+        return airTemperature;
+    }
+}
+```
+
+对应的Mapper为：
+
+```java
+public class v2MaxTemperatureMapper extends Mapper<LongWritable, Text, Text, IntWritable> {
+
+    private NcdcRecordParser parser = new NcdcRecordParser();
+
+    @Override
+    public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+        parser.parse(value);
+        if (parser.isValidTemperature()) {
+            context.write(new Text(parser.getYear()), new IntWritable(parser.getAirTemperature()));
+        }
+    }
+```
+
+---
+
+#### 关于Reducer
+
+reducer必须指出指定键的最大值，用来计算最高气温的reducer
+
+```java
+public class MaxTemperatureReducer extends Reducer<Text, IntWritable, Text, IntWritable> {
+    @Override
+    public void reduce(Text key, Iterable<IntWritable> values, Context context) throws IOException, InterruptedException {
+        int maxValue = Integer.MIN_VALUE;
+        for (IntWritable value : values) {
+            maxValue = Math.max(maxValue, value.get());
+        }
+        context.write(key, new IntWritable(maxValue));
+    }
+}
+```
+
+测试用例：
+
+```java
+public class MaxTemperatureReducerTest {
+    @Test
+    public void returnsMaximumIntegerInvalues() throws IOException, InterruptedException {
+        new ReduceDriver<Text, IntWritable, Text, IntWritable>()
+                .withReducer(new MaxTemperatureReducer())
+                .withInput(new Text("1950"), Arrays.asList(new IntWritable(10), new IntWritable(5)))
+                .withOutput(new Text("1950"), new IntWritable(10))
+                .runTest();
+    }
+}
+```
+
+### **6.4 本地运行测试数据**
+
+现在Mapper和Reducer可以在受控的输入上进行工作了，下一步是写一个作业驱动程序，然后在开发机器上使用测试数据运行它
+
+#### 在本地作业运行器上运行作业
+
+```java
+import com.google.common.annotations.VisibleForTesting;
+import org.apache.hadoop.conf.Configured;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.util.Tool;
+import org.apache.hadoop.util.ToolRunner;
+
+public class MaxTemperatureDriver extends Configured implements Tool {
+
+    // MaxTemperatureDriver实现了Tool接口，所以可以设置 GenericOptionsParser支持的选项
+    public int run(String[] args) throws Exception {
+        if (args.length != 2) {
+            System.err.printf("Usage: %s [generic options] <input> <output>\n", getClass().getSimpleName());
+            ToolRunner.printGenericCommandUsage(System.err);
+            return -1;
+        }
+
+        Job job = new Job(getConf(), "Max temperature");
+        job.setJarByClass(getClass());
+
+        FileInputFormat.addInputPath(job, new Path(args[0]));
+        FileOutputFormat.setOutputPath(job, new Path(args[1]));
+
+        job.setMapperClass(MaxTemperatureMapper.class);
+        job.setCombinerClass(MaxTemperatureReducer.class);
+        job.setReducerClass(MaxTemperatureReducer.class);
+
+        job.setOutputKeyClass(Text.class);
+        job.setOutputValueClass(IntWritable.class);
+
+        return job.waitForCompletion(true) ? 0 : 1;
+    }
+
+    public static void main(String[] args) throws Exception {
+        int exitCode = ToolRunner.run(new MaxTemperatureDriver(), args);
+        System.exit(exitCode);
+    }
+}
+```
+
+Usage:
+
+```txt
+Usage: MaxTemperatureDriver [generic options] <input> <output>
+Generic options supported are:
+-conf <configuration file>        specify an application configuration file
+-D <property=value>               define a value for a given property
+-fs <file:///|hdfs://namenode:port> specify default filesystem URL to use, overrides 'fs.defaultFS' property from configurations.
+-jt <local|resourcemanager:port>  specify a ResourceManager
+-files <file1,...>                specify a comma-separated list of files to be copied to the map reduce cluster
+-libjars <jar1,...>               specify a comma-separated list of jar files to be included in the classpath
+-archives <archive1,...>          specify a comma-separated list of archives to be unarchived on the compute machines
+
+The general command line syntax is:
+command [genericOptions] [commandOptions]
+```
+
+运行命令 `hadoop MaxTemperatureDriver -fs file:/// -jt local path/to/input/ncdc/micro output`
+
+本地作业运行器实际上可以在包括 HDFS 在内的任何文件系统上正常工作
+
+#### 测试驱动程序
+
+除了灵活的配置选项可以使应用程序实现Tool，还可以插入任意Configuration来增加可测试性
+
+- 第一种方法是使用本地作业运行器，在本地文件系统的测试文件上运行作业
+
+```java
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.junit.Test;
+
+import static org.hamcrest.core.Is.is;
+import static org.junit.Assert.assertThat;
+
+
+public class MaxTemperatureTest {
+    @Test
+    public void test() throws Exception {
+        Configuration conf = new Configuration();
+        // 指明了 fs.defaultFS 和 mapreduce.framework.name
+        conf.set("fs.defaultFS", "file:///");
+        conf.set("mapreduce.framework.name", "local");
+        conf.setInt("mapreduce.task.io.sort.mb", 1);
+
+        Path input = new Path("/home/kong/code/hadoop-book/input/ncdc/micro");
+        Path output = new Path("output");
+
+        FileSystem fs = FileSystem.getLocal(conf);
+        fs.delete(output, true);
+
+        MaxTemperatureDriver driver = new MaxTemperatureDriver();
+        driver.setConf(conf);
+
+        int exitCode = driver.run(new String[] {input.toString(), output.toString()});
+        assertThat(exitCode, is(0));
+    }
+}
+```
+
+- 第二种方法是使用一个mini集群来运行，Hadoop有一组测试类，名为MiniDFSCluster，MiniMRCluster，MiniYARNCluster，它以程序方式创建正在运行的集群，不同于本地作业运行器，它们允许在整个HDFS，MapReduce和YARN机器上运行测试，mini集群上的节点管理器启动不同的JVM来运行任务，这会使调试更加困难
+
+### **6.5 在集群上运行**
+
+#### 打包作业
+
+- 本地作业运行器使用单JVM运行一个作业，只要作业需要的所有类都在类路径上，那么作业就可以正常执行
+- 分布式环境中，开始的时候作业的类必须打包成一个作业JAR文件并发送给集群，Hadoop 通过搜索驱动程序的类路径（路径包含JobConf或Job上的setJarByClass 方法中设置的类）自动找到该作业JAR文件，另一种方法，如果想要通过文件路径设置一个指定的JAR文件，可以使用setJar方法，JAR 文件路径可以是本地的，也可以是一个HDFS路径
+
+Maven 构建Jar文件 `mvn package -DskipTests`
+
+##### 1. 客户端的类路径
+
+由 `hadoop jar <jar>` 设置的用户客户端类路径包括以下几个组成部分：
+
+- 作业的JAR文件
+- 作业JAR文件的lib目录中的所有JAR文件以及classes目录
+- HADOOP_CLASSPATH定义的类路径
+
+##### 2. 任务的类路径
+
+在集群上（包括伪分布模式），map和reduce任务在各自的JVM上运行，它们的路径不受HADOOP_CLASSPATH控制，HADOOP_CLASSPATH是一项客户端设置，并针对驱动程序的JVM的类路径进行设置
+
+用户任务的类路径由以下几个部分组成：
+
+- 作业的JAR文件
+- 作业JAR文件的lib目录中的所有JAR文件以及classes目录
+- 使用 -libjars 选项 或 DistributedCache 的addFileToClassPath 方法，或Job添加到分布式缓存的所有文件
+
+##### 3. 打包依赖
+
+处理作业的库依赖
+
+- 将库解包和重新打包进作业JAR
+- 将作业JAR的lib目录中的库打包
+- 保持库于作业JAR分开，并通过HADOOP_CLASSPATH将它们添加到客户端的类路径，通过 -libjar 将它们添加到任务的类路径
+
+从创建的角度看，最后使用分布式缓存的选项是最简单的
+
+##### 4. 任务类路径的优先权
+
+设置这些选项就改变了针对Hadoop框架依赖的类, 谨慎使用：
+`HADOOP_USER_CLASSPATH_FIRST = true` 客户端中强制使Hadoop将用户的类路径邮箱放到搜索顺序中
+
+对于任务的类路径 `mapreduce.job.user.classpath.first = ture`
+
+#### 启动作业
+
+MapReduce 作业ID由 YARN 资源管理器创建的 YARN 应用ID生成
+
+一个应用ID的格式包含两部分：资源管理器开始时间和唯一标识此应用的由资源管理器维护的增量计数器
+
+ID | 含义
+--- | ---
+application_1410450250506_0003 | 资源管理器上的第三个应用
+job_1410450250506_0003 | 对应的作业ID
+task_14104050250506_0003_m_000003 | 任务属于作业，对应作业的第四个map任务，任务ID的顺序不必是任务执行的顺序
+
+访问 resource-manager-host
+
+- 配置yarn-site.xml
+- `start-yarn.sh`
+- `mr-jobhistory-daemon.sh start historyserver`
+
+MaxTemperature 运行命令：
+
+`hadoop jar myhadoop-1.0-SNAPSHOT.jar MaxTemperatureDriver /user/kong/input/ncdc/all max-temp`
+
+#### MapReduce的web页面
+
+作业历史指已完成的MapReduce作业的事件和配置信息
+
+#### 获取结果
+
+`hadoop fs -getmerge max-temp max-temp-local` 将指定目录下的所有文件合并为本地文件系统的一个文件
+
+`sort max-temp-local | tail` 因为reduce输出分区是无序的，我们对输出进行排序
+
+#### 作业调试
+
+如果调试期间产生的日志数据规模比较大，可以有多种选择，一种是将这些信息写到map的输出流供reduce任务分析，而不是写到标准错误流，另一种是可以写一个程序来分析作业产生的日志
+
+MaxTemperatureMapper 第三个版本
+
+```java
+public class v3MaxTemperatureMapper extends Mapper<LongWritable, Text, Text, IntWritable> {
+    enum Temperature {
+        OVER_100
+    }
+
+    private NcdcRecordParser parser = new NcdcRecordParser();
+    @Override
+    public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+        parser.parse(value);
+        if (parser.isValidTemperature()) {
+            int airTemperature = parser.getAirTemperature();
+            // 100度表示为1000
+            if (airTemperature > 1000) {
+                // 标识有问题的行
+                System.err.println("Temperature over 100 for input:" + value);
+                // 更新map状态
+                context.setStatus("detected possibly corrupt record: see logs");
+                // 计数器，统计超过100度的记录数
+                context.getCounter(Temperature.OVER_100).increment(1);
+            }
+            context.write(new Text(parser.getYear()), new IntWritable(airTemperature));
+        }
+    }
+}
+```
+
+#### Hadoop日志
+
+针对不同用户，Hadoop在不同的地方生成日志，YARN由一个日志聚合服务，可以取到已完成的应用的任务日志，并把其搬移到HDFS中，在那里任务日志被存储在一个容器文件中用于存档
+
+#### 远程调试
+
+在一个任务失败并且没有足够多的记录信息来诊断错误，可以选择用调试器运行该任务，在集群上运行作业很难使用调试器，因为不知道哪个节点处理哪部分输入，所以不能在错误发生之前安装调试器，还有一些方法可用：
+
+- 在本地重新产生错误
+- 使用JVM调试选项
+- 使用任务分析
+
+### **6.6 作业调优**
+
+在开始任务级别的分析和优化之前，必须仔细研究
+
+- mapper的数量
+- reducer的数量
+- combiner
+- 中间值的压缩
+- 自定义序列
+- 调整shuffle
+
+分析任务
+
+HPROF分析工具，一个JDK自带的分析工具，能够提供程序的CPU和堆使用等有价值的信息
+
+可以设定 mapreduce.task.profile.maps 和 mapreduce.task.progile.reduces 两个属性来指定要分析的任务ID的范围
+
+### **6.7 MapReduce的工作流**
+
+数据处理问题转化成MapReduce模型
+
+对于更复杂的问题可以考虑 Pig，hive，Cascading，Crunch，Spark，一个直接的好处是有了它之后，就用不着处理到MapReduce作业的转换，而是集中精力分析正在执行的任务
+
+#### 将问题分解成MapReduce作业
+
+问题：找到每个气象台每年每天的最高气温记录的均值
+
+使用 MapReduce 来计算，分为两个阶段
+
+1. 计算每个 station-date 的每日最高气温
+2. 计算每个 station-day-month 键的每日最高气温的均值
+    - 丢掉年份部分，投影到记录 station-day-month
+    - 然后reducer为每个station-day-month键计算最高气温值的均值
+
+一个作业可以包含多个(简单的)MapReduce步骤，这样整个作业由多个可分解的，可维护的mapper和reducer组成
+
+- mapper 一般执行输入格式的解析、投影（选择相关的字段）和过滤（去掉无用记录），我们可以在一个mapper中完成，也可以用ChainMapper类库将它们连成一个mapper
+- 结合使用ChainReducer，可以在一个MapReduce 作业中运行一系列的mapper，在运行一个reducer和另一个mapper链
+
+#### 关于JobControl
+
+JobControl的实例表示一个作业的运行图。可以加入作业配置，告诉JobControl实例作业之间的依赖关系。在一个线程中运行JobControl时，它将按照依赖顺序来执行这些作业
+
+#### 关于Apache Oozie
+
+Apache Oozie 是一个运行工作流的系统，由两部分组成
+
+- 一个工作流引擎，负责存储和运行由不同类型的hadoop作业组成的工作流
+- 一个cordinator引擎，负责基于预定义的调度策略及数据可用性运行工作流作业
+
+## 第七章 MaoReduce的工作机制
