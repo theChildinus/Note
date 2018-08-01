@@ -1770,4 +1770,166 @@ Apache Oozie 是一个运行工作流的系统，由两部分组成
 - 一个工作流引擎，负责存储和运行由不同类型的hadoop作业组成的工作流
 - 一个cordinator引擎，负责基于预定义的调度策略及数据可用性运行工作流作业
 
-## 第七章 MaoReduce的工作机制
+## 第七章 MapReduce的工作机制
+
+### **7.1 剖析MapReduce 作业运行机制**
+
+Hadoop 运行作业过程描述如下图，在最高层由以下5个独立的实体
+
+- 客户端，提交MapReduce作业
+- YARN资源管理器，负责协调集群上计算机资源的分配
+- YARN节点管理器，负责启动和监视集群中计算机上的计算容量(container)
+- MapReduce 的 application master，负责协调运行MapReduce作业的任务，他和MapReduce任务在容器中运行，这些容器由资源管理器分配并由节点管理器进行管理
+- 分布式文件系统，用来于其他实体间共享作业文件
+
+#### 作业的提交
+
+Job 的submit方法创建一个内部的 JobSummiter实例，并且调用其submitJobInternal方法`（步骤1）`，提交作业后，waitForCompletion每秒轮询作业的进度
+
+![mapreduce作业的工作原理](image/mapreduce_run.png)
+
+JobSummiter 所实现的作业提交过程如下：
+
+- 向资源管理器请求一个新应用ID，用于MapReduce作业ID`（步骤2）`
+- 检查作业的输出说明。例如没有指定输出目录或输出目录已经存在，作业就不提交，错误返回给MapReduce程序
+- 计算作业的输入分片。如果分片无法计算，比如因为输入路径不对，作业就不提交，错误返回给MapReduce程序
+- 将运行作业所需要的资源复制到一个以作业ID命名的目录下的共享文件系统中`（步骤3）`
+- 通过调用资源管理器的submitApplication方法提交作业`（步骤4）`
+
+#### 作业的初始化
+
+- 资源管理器收到调用它的submitApplication消息后，便将请求传递给YARN调度器(scheduler)，调度器分配一个容器，然后资源管理器在节点管理器的管理下，在容器中启动application master的进程`（步骤5a，5b）`
+- MapReduce 作业的 application master是一个应用程序，其主类是MRAppMaster，由于将接受来自任务的进度和完成报告`（步骤6）`，因此application master 对作业的初始化是通过创建多个簿记对象（bookkeeping objects）保持对作业进度的跟踪来完成的
+- 接下来接受来自共享文件系统的、在客户端计算的输入分片`（步骤7）`
+- 然后对每一个分片创建一个map任务对象以及由 mapreduce.job.reduces 属性确定的多个reduce任务对象，任务ID在此时分配
+
+应用主节点必须确定如何执行任务。如果作业比较小的话，应用主节点会选择在同一个 JVM 中串行运行任务，这被称作 uberized，这个任务被称作 uber 任务；否则则会在多个节点上并行执行任务。 uber 任务可降低任务的延迟。
+
+默认情况下，小作业就是少于10个mapper且只有1个reducer且输入大小小于一个HDFS块的作业
+
+#### 任务的分配
+
+- 如果作业不适合作为uber任务运行，那么application master就会为该作业中的所有map任务和reduce任务向资源管理器请求容器`（步骤8）`
+- 首先为Map任务发出请求，该请求优先级要高与reduce任务的请求，这是因为所有的Map任务必须在reduce的排序阶段能够启动前完成，直到有5%的map任务完成时，为reduce任务的请求才会发出
+
+reduce任务能够在集群中任意位置运行，但是map任务的请求有着数据本地化局限，这也是调度器所关注的
+
+#### 任务的执行
+
+- 一旦资源管理器的调度器为任务分配了一个特定节点上的容器，application master就通过与节点管理器通信来启动容器`（步骤9a，9b）`，该任务由主类为YarnChild的一个java应用程序执行
+- 在它运行任务之前，首先将任务需要的资源本地化，包括作业的配置，JAR文件和所有来自分布式缓存的文件`（步骤10）`
+- 最后运行map任务或reduce任务`（步骤11）`
+
+Streaming 运行特殊的map任务和reduce任务，目的是运行用户提供的可指定程序，并与之通信
+
+![streaming](image/streaming.png)
+
+#### 进度和状态的更新
+
+MapReduce作业是长时间运行的批量作业，运行时间范围从数秒到数小时
+
+构成进度的所有操作如下：
+
+- 读入一条输入记录
+- 写入一条输出记录
+- 设置状态描述
+- 增加计数器的值
+- 调用 Reporter 或 TaskAttemptContext 的 progress 方法
+
+任务也有一组计数器，负责对任务运行过程中各个事件进行计数（详情参见2.3.2节Java MapReduce），这些计数器要么内置于框架中，例如已写人的map输出记录数，要么由用户自己定义。
+
+当map任务或reduce任务运行时，子进程和自己的父application master通过umbilical接口通信。每隔3秒钟，任务通过这个umbilical接口向自己的application master报告进度和状态（包括计数器），application master会形成一个作业的汇聚视图(aggregateview)。
+
+资源管理器的界面显示了所有运行中的应用程序，并且分别有链接指向这些应用各自的application master的界面，这些界面展示了MapReduce作业的更多细节，包括其进度。
+
+在作业期间，客户端每秒钟轮询一次application master以接收最新状态（轮询间隔通过mapreduce.client.progressmonitor.pollinterval设置）。客户端也可以使用Job的getStatus()方法得到一个JobStatus的实例，后者包含作业的所有状态信息。
+
+![status-update](image/statusupdate.png)
+
+#### 作业的完成
+
+当application master收到作业最后一个任务已完成的通知后，便把作业状态设置为成功，然后在Job轮询状态时，便知道任务已成功完成，于是Job打印一条消息告诉用户，然后waitForCompletion方法返回，Job的统计消息和计数值也在这个时候输出到控制台
+
+最后作业完成时，application master和任务容器清理其工作状态
+
+### **7.2 失败**
+
+我们需要考虑以下实体的失败：
+
+- 任务
+  - application master被告知一个任务失败后将重新调用该任务的执行，application master会试图避免在以前失败过的节点管理器上重新调用该任务
+- application master
+  - 恢复过程如下：
+  - application master向资源管理器发送周期性心跳，当application master失败时，资源管理器将检测到该失败并在一个新容器中开始一个新的master
+  - 对于MapReduce application master它将使用作业历史来恢复失败的应用程序所运行任务的状态，使其不必重新运行
+  - MapReduce客户端向application master轮询进度报告，但是如果它的application master运行失败，客户端就需要重新定位新的实例
+- 节点管理器
+  - 在失败的节点管理器上运行的所有任务或application master 都用前两节描述的机制进行恢复，对于那些曾经在失败的节点管理器上运行且成功完成的map任务，如果属于未完成的作业，那么application master会安排它们重新运行
+- 资源管理器
+  - 为获得高可用性，在双机热备配置下，运行一堆资源管理器是必要的，如果主资源管理器失败了，那么备份资源管理器能够接替
+  - 关于所有运行中的应用程序的信息存储在一个高可用的状态存储区中，这样备机可以恢复出失败的主资源管理器的关键状态。
+  - 资源管理器从备机到主机的切换是由故障转移控制器处理的
+
+### **7.3 shuffle 和 排序**
+
+MapReduce确保每个reducer的输入都是按键排序的，`系统执行排序、将map输出作为输入传给reducer的过程称为shuffle`
+
+shuffle 是 MapReduce的心脏，是奇迹发生的地方
+
+#### map端
+
+map函数开始产生输出时，并不是简单将它写到磁盘，它利用缓存的方式写到内存并处于效率的考虑进行预排序
+
+每个map任务都有一个环形内存缓冲区用于存储任务输出，一旦缓存内容达到阈值，一个后台线程便把内容溢出到磁盘
+
+![shuffle](image/shuffle.png)
+
+在写磁盘之前，线程首先根据数据的最终要传的reducer把数据划分成相应的分区(partition)，在每个分区中，后台线程按键进行内存中排序，如果由一个combiner函数，它就在排序后的输出上运行，运行combiner函数使得map输出结果更紧凑，因此减少写到磁盘的数据和传输给reducer的数据
+
+在将压缩map输出写到磁盘的过程中对它进行压缩往往是个好主意，因为这样会写磁盘的速度更快，节约磁盘空间，并且减少传给reducer的数据量
+
+reducer通过HTTP得到输出文件的分区
+
+#### reduce端
+
+map输出文件位于运行map任务的tasktracker的本地磁盘，现在tasktracker需要为分区文件运行reduce任务，并且reduce任务需要集群上若干个map任务的mao输出作为其特殊的分区文件
+
+- 每个map任务的完成时间可能不同，因此在每个任务完成时，reduce任务就开始复制其输出，这就是`reduce任务的复制阶段`
+
+map任务成功完成后，它们会使用心跳机制通知它们的application master，application master 知道map输出和主机位置之间的映射关系，reducer中的一个线程定期询问master以获取map输出主机的位置
+
+- 完成所有map输出后`reduce任务进入排序阶段（合并阶段）`，这个阶段将合并map输出，维持其顺序排序
+
+- 在最后阶段即`reduce阶段`，直接把数据输入reduce函数，从而省略了一次磁盘往返行程，最后的合并可以来自内存和磁盘片段
+
+![merge](image/merging40.png)
+
+每趟合并过程的目标是合并最小数量的文件以便满足最后一趟的合并系数，因此40个文件我们不会在4趟中每趟合并10个文件从而得到4个文件，相反，第一次合并4个，随后三趟合并10个，最后一趟4个已合并文件和余下6个文件合计10个文件
+
+这样是为了尽量减少写到磁盘的数据量，因为最后一趟总是直接合并到reduce
+
+在reduce阶段，对已排序输出中的每个键调用reduce函数，此阶段的输出直接写到输出文件系统，一般为HDFS
+
+#### 配置调优
+
+总的原则是给shuffle过程尽量多提供内存空间，然而有一个平衡问题，也就是要确保map函数和reduce函数能够得到足够的内存来运行
+
+在map端，可以通过避免多次溢出来获得最佳性能
+
+在reduce端，中间数据全部驻留在内存时，就能获得最佳性能
+
+### **7.4 任务的执行**
+
+Hadoop为map任务和reduce任务提供运行环境相关信息
+
+Hadoop设置作业配置参数作为Streaming程序的环境变量
+
+MapReduce 模型将作业分解成任务，然后并行地运行任务以使作业的整体执行时间少于各个任务顺序执行的时间，当一个作业由几百或者几千个任务组成时，可能出现少数拖后腿的任务，这是很常见的
+
+任务执行缓慢可能有多种原因，包括硬件老化或者配置错误
+
+推测执行的目的是为了减少作业执行时间，但这是以集群效率为代价的，在一个繁忙的集群中，推测执行会减少整体的吞吐量，因为冗余任务的执行时会减少作业的执行时间
+
+Hadoop MapReduce 使用一个提交协议来确保作业和任务都完全成功或失败，这个行为通过对作业使用OutputCommitter来实现
+
+## 第八章 MapReduce 的类型和格式
