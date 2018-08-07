@@ -1933,3 +1933,516 @@ MapReduce 模型将作业分解成任务，然后并行地运行任务以使作�
 Hadoop MapReduce 使用一个提交协议来确保作业和任务都完全成功或失败，这个行为通过对作业使用OutputCommitter来实现
 
 ## 第八章 MapReduce 的类型和格式
+
+MapReduce数据处理模型非常简单，map和reduce函数的输入和输出是键值对
+
+### **8.1 MapReduce的类型**
+
+Hadoop的MapReduce中，map函数和reduce函数遵循如下的常规格式：
+
+- `map： (K1, V1) -> list(K2, V2)`
+- `reduce: (K2, list(V2)) -> list(K3, V3)`
+
+reduce函数的输入类型必须和map函数的输出类型相同
+
+如果使用combiner函数，它与reduce函数的形式相同，不同之处是它的输出类型是中间的键-值对类型(K2, V2)，这些中间值可以输入reduce函数
+
+- `map: (K1, V1) -> list(K2, V2)`
+- `combiner: (K2, list(V2)) -> list(K2, V2)`
+- `reduce: (K2, list(V2)) -> list(K3, V3)`
+
+partition函数对中间结果的键值对(K2, V2)进行处理，并且返回一个分区索引，实际上，分区由键单独决定
+
+- `partition: (K2, V2) -> integer`
+
+#### 默认的 MapReduce 作业
+
+```java
+public class MinimalMapReduceWithDefaults extends Configured implements Tool {
+    
+    public int run(String[] args) throws Exception {
+        // 通过把打印使用说明的逻辑抽取出来，并把输入输出路径放到一个帮助方法中，实现对run()方法前几行简化
+        Job job = JobBuilder.ParseInputAndOutput(this, getConf(), args);
+        if (job == null) {
+            return -1;
+        }
+
+        // 默认的输入格式是 TextInputFormat
+        // 产生的键类型为 LongWritable（文件中每行中开始的偏移量值） 值类型是 Text（文本行）
+        // 最后输出的整数含义: 行偏移量
+        job.setInputFormatClass(TextInputFormat.class);
+
+        // map 的输入输出键是LongWritable类型，输入输出值是Text类型
+        job.setMapperClass(Mapper.class);
+        job.setMapOutputKeyClass(LongWritable.class);
+        job.setMapOutputValueClass(Text.class);
+
+        // 它对每条记录的键进行Hash操作，以决定该记录属于哪个分区，
+        // 每个分区由一个reduce任务处理，所以分区数等于作业的reduce任务个数
+        job.setPartitionerClass(HashPartitioner.class);
+
+        // map任务的数量等于输入文件被划分成的分块数
+        // 目标reducer 保持在每个运行5分钟左右，且产生至少一个HDFS的输出比较合适
+        job.setNumReduceTasks(1);
+        job.setReducerClass(Reducer.class);
+
+        // 大多数MapReduce程序不会一直用相同的键或值类型
+        job.setOutputKeyClass(LongWritable.class);
+        job.setOutputValueClass(Text.class);
+
+        // 默认的输出格式为 TextOutputFormat
+        job.setOutputFormatClass(TextOutputFormat.class);
+
+        return job.waitForCompletion(true) ? 0 : 1;
+    }
+
+    public static void main(String[] args) throws Exception {
+        int exitCode = ToolRunner.run(new MinimalMapReduceWithDefaults(), args);
+        System.exit(exitCode);
+    }
+}
+```
+
+#### 默认的 Streaming 作业
+
+开发一个非java的mapper，Steaming会做一些特殊的处理，它并不会把键传给mapper，而是只穿值
+
+##### Streaming中的键和值
+
+Streaming应用可以决定分隔符的使用，该分隔符用于通过标准输入把键值对转换为一串比特值发送个map函数和reduce函数
+
+在Streaming MapReduce 作业中使用分隔符的位置（这些属性与输入和输出的格式无关）：
+
+![separator](image/separator.png)
+
+### **8.2 输入格式**
+
+#### 输入分片和记录
+
+输入分片和记录是逻辑概念，输入分片在java中表示为InputSplit接口，InputSplit包含一个以字节为单位的长度和一组存储位置（一组主机名），分片不包含数据本身，而是指向数据的引用，存储位置供MapReduce系统使用以便将map任务尽量放在分片数据附近
+
+InputSplit是由InputFormat创建的
+
+```java
+public abstract class InputFormat<K, V> {
+
+    public abstract List<InputSplit> getSplits(JobContext context)
+   throws IOException, InterruptedException;
+  
+    public abstract RecordReader<K,V> createRecordReader(InputSplit split, TaskAttemptContext context) throws IOException, InterruptedException;
+}
+```
+
+- 运行作业的客户端通过 getSplits计算分片，然后将它发送给application master，application master使用其存储位置信息来调度map任务，从而在集群上处理这些分片数据
+- map任务把分片传递给InputFormat的 createRecordReader方法来获得这个分片的RecordReader，RecordReader就像记录上的迭代器，map任务用一个ReduceReader来生成记录的键值对，然后再传给map函数（见Mapper的run方法）
+- nextKeyValue（委托给RecordReader的同名方法） 为mapper产生键值对象，通过Context键值从RecordReader中被检索出并传递给map方法
+
+```java
+  public void run(Context context) throws IOException， InterruptedException {
+    setup(context);
+    try {
+      while (context.nextKeyValue()) {
+        map(context.getCurrentKey(), context.getCurrentValue(), context);
+      }
+    } finally {
+      cleanup(context);
+    }
+  }
+```
+
+##### **1. FileInputFormat类**
+
+FileInputFormat 是所有使用文件作为数据源的InputFormat实现的基类，它提供两个功能
+
+- 一个用于指出作业的输入文件位置
+- 一个是为输入文件生成分片的代码实现
+
+![fieinputFormat](image/fileinputformat.png)
+
+##### **2. FileInputFormat类的输入路径**
+
+作业的输入被设定为一组路径，一个被指定为输入路径的目录，其内容不会被递归处理
+
+##### **3. FileInputFormat类的输入分片**
+
+FileInputFormat 只分割大（通常指文件超过HDFS块的大小）文件
+
+最小分片的大小必须可以确保每个分片有一个同步点，最大的分片大小默认是由Java的long类型表示的最大值
+
+##### **4. 小文件与 CombineFileInputFormat**
+
+相对于大批量的小文件，Hadoop更适合处理少量的大文件，一个原因是FileInputFormat 生成的分块是一个文件或该文件的一部分
+
+CombineFileInputFormat 可以缓解小文件导致的map任务过多，FileInputFormat 为每个文件生成一个分片，CombineFileInputFormat可以把多个文件打包到一个分片中以便每个mapper可以处理更多的数据
+
+MapReduce处理数据的最佳速度应该与数据在集群中的传输速度相同，在HDFS集群中存储大量的小文件会浪费namenode的内存
+
+##### **5. 避免切分**
+
+两种方法保证输入文件不被切分
+
+- 增加最小分片大小，将其设置成大于要处理的最大文件大小
+- 使用FileInputFormat具体的子类，并重写isSplitable方法，把返回值设置为false
+
+以下是一个不可分割的TextInputFormat
+
+```java
+public class NonSplittableTextInputFormat extends TextInputFormat {
+    @Override
+    protected boolean isSplitable(JobContext context, Path file) {
+        return false;
+    }
+}
+```
+
+##### **6. mapper中的文件信息**
+
+处理文件输入分片的mapper 可以从作业配置对象的某些特定属性中读取输入分片的有关信息，还可以通过调用在Mapper的Context对象上的getInputSplit方法来实现
+
+当输入的格式源自于FileInputFormat，该方法返回InputSplit可以被强制转换为一个FileSplit
+
+##### **7. 把整个文件作为一条记录处理**
+
+```java
+public class WholeFileRecordReader extends RecordReader<NullWritable, BytesWritable> {
+
+    private FileSplit fileSplit;
+    private Configuration conf;
+    private BytesWritable value = new BytesWritable();
+
+    // 用于记录记录是否被处理过
+    private boolean processed = false;
+
+    @Override
+    public void initialize(InputSplit split, TaskAttemptContext context)
+            throws IOException, InterruptedException {
+        this.fileSplit = (FileSplit) split;
+        this.conf = context.getConfiguration();
+    }
+
+    @Override
+    public boolean nextKeyValue() throws IOException, InterruptedException {
+        if (!processed) {
+            // 产生长度为文件长度的字节数组
+            byte[] contents = new byte[(int) fileSplit.getLength()];
+            Path file = fileSplit.getPath();
+            FileSystem fs = file.getFileSystem(conf);
+            FSDataInputStream in = null;
+
+            try {
+                in = fs.open(file);
+
+                // 用 IOUtils 类把文件的内容放入字节数组
+                IOUtils.readFully(in, contents, 0, contents.length);
+                value.set(contents, 0, contents.length);
+
+            } finally {
+                IOUtils.closeStream(in);
+            }
+            processed = true;
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    public NullWritable getCurrentKey() throws IOException, InterruptedException {
+        return NullWritable.get();
+    }
+
+    @Override
+    public BytesWritable getCurrentValue() throws IOException, InterruptedException {
+        return value;
+    }
+
+    @Override
+    public float getProgress() throws IOException {
+        return processed ? 1.0f : 0.0f;
+    }
+
+    // 该方法由MapReduce 框架在reader完成后调用
+    @Override
+    public void close() throws IOException {
+        // do somthing
+    }
+}
+```
+
+WholeFIleRecordReader 负责将FileSplit转化成一条记录，该记录的键为null，值为这个文件的内容
+
+将若干个小文件打包成顺序文件的MapReduce程序
+
+```java
+public class SmallFileToSequenceFileConverter extends Configured implements Tool {
+
+    static class SequenceFileMapper
+            extends Mapper<NullWritable, BytesWritable, Text, BytesWritable> {
+
+        private Text filenameKey;
+
+        @Override
+        protected void setup(Context context) throws IOException, InterruptedException {
+
+            InputSplit split = context.getInputSplit();
+
+            // 由于输入格式是WholeFileInputFormat，所以mapper 只需要找到文件输入分片的文件名
+            Path path = ((FileSplit) split).getPath();
+            filenameKey = new Text(path.toString());
+        }
+
+        @Override
+        protected void map(NullWritable key, BytesWritable value, Context context)
+                throws IOException, InterruptedException {
+            context.write(filenameKey, value);
+        }
+    }
+
+    public int run(String[] args) throws Exception {
+        Job job = JobBuilder.ParseInputAndOutput(this, getConf(), args);
+        if (job == null) {
+            return -1;
+        }
+
+        job.setInputFormatClass(WholeFileInputFormat.class);
+        job.setOutputFormatClass(SequenceFileOutputFormat.class);
+
+        job.setOutputKeyClass(Text.class);
+        job.setOutputValueClass(BytesWritable.class);
+
+        job.setMapperClass(SequenceFileMapper.class);
+
+        return job.waitForCompletion(true) ? 0 : 1;
+    }
+
+    public static void main(String[] args) throws Exception {
+        int exitCode = ToolRunner.run(new SmallFileToSequenceFileConverter(), args);
+        System.exit(exitCode);
+    }
+}
+```
+
+执行命令：
+
+- `mvn package -DskipTests`
+- `hadoop jar myhadoop-1.0.jar SmallFileToSequenceFileConverter -D mapreduce.job.reduces=2 /user/kong/input/smallfiles output`
+
+查看结果 `hadoop fs -text /user/root/output/part-r-00000`：
+
+hdfs://localhost:9000/user/kong/input/smallfiles/a 61 61 61 61 61 61 61 61 61 61
+hdfs://localhost:9000/user/kong/input/smallfiles/c 63 63 63 63 63 63 63 63 63 63
+hdfs://localhost:9000/user/kong/input/smallfiles/e 
+
+一个mapper处理一个文件的方法是低效的，所以较好的方法是继承CombineFileInputFormat 而不是FileInputFormat
+
+#### 文本输入
+
+Hadoop非常擅长处理非结构化文本数据
+
+##### **1. TextInputFormat**
+
+TextInputFormat 是默认的InputFormat，每条记录是一行输入，键是LongWritable类型，存储该行在整个文件中的字节偏移量，值是这行的内容（不包含换行符和回车符），打包为Text对象
+
+```txt
+On the top of the Crumpetty Tree
+The Quangle Wangle sat,
+But his face you could not see,
+On account of his Beaver Hat.
+```
+
+该文本被切分为包含4条记录的一个分片，每条记录表示为以下键值对
+
+```txt
+(0, On the top of the Crumpetty Tree)
+(33, he Quangle Wangle sat,)
+(57, But his face you could not see,)
+(89, On account of his Beaver Hat.)
+```
+
+由于文件按字节而不是按行切分为分片，所以很难取的行号，每一行在文件中的偏移量是可以在分片内单独确定的
+
+输入分片于HDFS块之间的关系
+
+![textinputformat](image/textinputformat.png)
+
+一个文件分成几行，行得边界与HDFS块的边界没有对齐，分片的边界与逻辑记录的边界对齐（这里是行边界），所以第一分片包含第五行，即使第5行跨第一块和第二块
+
+##### **2. 控制一行的最大长度**
+
+以此对付被破坏的文件，文件的损坏可表现为一个超长行，通过mapreduce.input.linerecordreader.line.maxlength设置
+
+##### **3. 关于 KeyValueTextInputFormat**
+
+与TextInputFormat 不一样的地方，key不再是字符的偏移量，把一行记录分隔符之前的区域当作key，其他区域当作value
+
+##### **4. 关于 NLineInputFormat**
+
+如果希望mapper收到固定行数的输入，需要将NLineInputFormat作为InputFormat使用，与TextInputFormat一样，键是文件中行的字节偏移量，值是行本身
+
+例子：用Hadoop引导从多个数据源加载数据，创建一个”种子“输入文件，记录所有的数据源，一行一个数据源，然后每个mapper分配到一个数据源，并从这些数据源中加载数据到 HDFS 中
+
+##### **5. 关于 XML**
+
+Hadoop提供了 StreamXmlRecordReader 类，通过把输入格式设置为 StreamInputFormat，把stream.recordreader.class 属性设置为 org.apache.hadoop.streaming.mapreduce.StreamXmlRecordReader 来用 StreamXmlRecordReader 类
+
+#### 二进制输入
+
+##### **1. 关于SequenceFileInputFormat类**
+
+如果要用顺序文件数据作为MapReduce的输入，可以使用 SequenceFileInputFormat，键和值是由顺序文件决定的，所以只要保证map输入的类型匹配
+
+##### **2. 关于SequenceFileAsTextInputFormat类**
+
+将顺序文件的键和值转换为Text对象，这个转换通过在键和值上调用toString实现，这个格式使顺序文件作为Streaming的合适的输入类型
+
+##### **3. 关于SequenceFileAsBinaryInputFormat类**
+
+它获取顺序文件的键和值作为二进制对象，它们被封装为BytesWritable对象
+
+##### **4. 关于FixedLengthInputFormat类**
+
+用于从文件中读取固定宽度的二进制记录，当然这些记录没有用分隔符分开
+
+#### 多个输入
+
+MultipleInputs 来处理不同格式的文件或不同的表示，它允许为每条输入路径指定InputFormat和Mapper
+
+```java
+MultipleInputs.addInputPath(job, ncdcInputPath, TextInputFormat.class, MaxTemperatureMapper.class);
+MultipleInputs.addInputPath(job, metofficeInputPath, TextInputFormat.class, MetofficeMaxTemperatureMapper.class);
+```
+
+MultipleInputs类有一个重载版本的addInputPath方法，它没有mapper参数，如果有多种输入格式而只有一个mapper，这种方法很有用
+
+```java
+public static void addInputPath(Job job, Path path, class<? extends InputFormat> inputFormatClass)
+```
+
+#### 数据库输入（和输出）
+
+DBInputFormat 用于使用JDBC从关系型数据库中读取数据，在数据库中运行太多的mapper读数据可能会使数据库受不了，所以DBInputFormat 最好用于加载小量的数据集，如果需要与来自HDFS的大数据集连接，要是用MultipleInputs，与之对应的输出格式为DBOutputFormat，它适用于将作业输出数据转储到数据库
+
+关系型数据库和HDFS之间移动数据的另一个方法是使用 Sqoop
+
+HBase的TableInputFormat 用于让MapReduce程序操作存放在HBase表中的数据，TableOutputFormat则是把MapReduce输出写到HBase
+
+### **8.3 输出格式**
+
+OutputFormat类的层次结构如图：
+
+![outputformat](image/outputformat.png)
+
+#### 文本输出
+
+默认的输出格式是 TextOutputFormat，它把每条记录写为文本行，它的键和值可以是任意类型，因为TextOutputFormat 调用toString方法把它们转换为字符串
+
+与TextOutputFormat对应的输入格式是 KeyValueTextInputFormat
+
+可以用NullWritable来省略输出的键和值，这也会导致无分隔符输出，以使输出适合用TextInputFormat读取
+
+#### 二进制输出
+
+##### **1. 关于SequenceFileOutputFormat**
+
+将其输出写为一个顺序文件
+
+##### **2. 关于SequenceFileAsBinaryOutputFormat**
+
+SequenceFileAsBinaryOutputFormat 与 SequenceFileAsBinaryInputFormat 相对应，它以原始的二进制格式把键值对写到一个顺序文件容器中
+
+##### **3. 关于MapFileOutputFormat**
+
+MapFileOutputFormat 把map文件作为输出，MapFile中的键必须顺序添加，所以必须确保reducer输出的键已经排好序
+
+#### 多个输出
+
+FileOutputFormat及其子类产生的文件放在输出目录下，每个reducer一个文件并且文件由分区命名：`part-r-00000`，`part-r-00001`，有时可能需要对输出的文件名进行控制或者让每个reducer输出多个文件，为此有了MultipleOutputFormat
+
+##### **1. 数据分割**
+
+问题：按照气象站来区分气象数据，作业的输出是每个气象站一个文件，此文件包含该气象站的所有数据记录
+
+一种方法是每个气象站对应一个reducer，为此需要做：
+
+- 写一个partitioner，把同一个气象站的数据放到同一个分区上
+- 把作业的reducer数设为气象站的个数
+
+缺点是：
+
+- 需要在作业运行之前知道分区数和气象站数
+- 让应用程序来限定分区数并不好，因为可能导致分区数少或分区不均
+
+以下这两种特殊情况下，让应用程序来设定分区数是有好处的：
+
+- 0个reducer 没有分区，因为应用只有map任务
+- 1个reducer 可以很方便的运行若干个小作业
+
+最好让集群为作业决定分区数，默认的HashPartitioner处理的分区数不限，并且确保每个分区都有一个很好的键组合使分区更均匀
+
+如果使用HashPartitioner，每个分区就会包含多个气象站，因此要实现每个气象站输出一个文件，就需要每个reducer 写多个文件
+
+##### **2. 关于MultipleOutput**
+
+```java
+public class PartitionByStationUsingMultipleOutputs extends Configured implements Tool {
+
+    static class StationMapper extends Mapper<LongWritable, Text, Text, Text> {
+        private NcdcRecordParser parser = new NcdcRecordParser();
+
+        @Override
+        protected void map(LongWritable key, Text value, Context context)
+            throws IOException, InterruptedException {
+            parser.parse(value);
+            context.write(new Text(parser.getStationId()), value);
+        }
+    }
+
+    static class MultipleOutputReducer extends Reducer<Text, Text, NullWritable, Text> {
+        private MultipleOutputs<NullWritable, Text> multipleOutputs;
+
+        @Override
+        protected void setup(Context context) throws IOException, InterruptedException {
+            // 构造MultipleOutputs的实例，并将它赋给一个实例变量
+            multipleOutputs = new MultipleOutputs<NullWritable, Text>(context);
+        }
+
+        @Override
+        public void reduce(Text key, Iterable<Text> values, Context context)
+            throws IOException, InterruptedException {
+            for (Text value : values) {
+                // write 方法作用于键，值和名字，这里使用气象站标识符作为名字
+                multipleOutputs.write(NullWritable.get(), value, key.toString());
+            }
+        }
+
+        @Override
+        protected void cleanup(Context context) throws IOException, InterruptedException {
+            multipleOutputs.close();
+        }
+    }
+
+    public int run(String[] args) throws Exception {
+        Job job = JobBuilder.ParseInputAndOutput(this, getConf(), args);
+        if (job == null) {
+            return -1;
+        }
+
+        job.setMapperClass(StationMapper.class);
+        job.setMapOutputKeyClass(Text.class);
+        job.setReducerClass(MultipleOutputReducer.class);
+        job.setOutputKeyClass(NullWritable.class);
+
+        return job.waitForCompletion(true) ? 0 : 1;
+    }
+
+    public static void main(String[] args) throws Exception {
+        int exitCode = ToolRunner.run(new PartitionByStationUsingMultipleOutputs(), args);
+        System.exit(exitCode);
+    }
+}
+```
+
+#### 延迟输出
+
+FileOutputFormat 的子类会产生输出文件，即使文件是空的，有些应用倾向于不创建空文件，此时LazyOutputFormat就有用了，它可以保证指定分区第一条记录输出是才真正创建文件
+
+## 第九章 MapReduce 的特性
