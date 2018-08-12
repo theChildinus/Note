@@ -2446,3 +2446,658 @@ public class PartitionByStationUsingMultipleOutputs extends Configured implement
 FileOutputFormat 的子类会产生输出文件，即使文件是空的，有些应用倾向于不创建空文件，此时LazyOutputFormat就有用了，它可以保证指定分区第一条记录输出是才真正创建文件
 
 ## 第九章 MapReduce 的特性
+
+### **9.1 计数器**
+
+计数器是收集作业统计信息的有效手段，用于质量控制和应用级统计
+
+#### 内置计数器
+
+##### 任务计数器
+
+- MapReduce任务计数器
+  - 任务计数器是由其关联任务维护，并定期发送给application master，任务计数器的值每次都是完整传输的
+- 文件系统计数器
+- FileInputFormat计数器
+- FileOutputFormat计数器
+- 作业计数器
+
+##### 作业计数器
+
+作业计数器由 application master维护，因此无需在网络间传输数据，这些计数器都是作业级别的统计量，其值不会随着任务运行而改变
+
+#### 用户定义的Java计数器
+
+用户定义的计数器由一个Java 枚举类型来定义，以便对有关的计数器分组
+
+```java
+public class MaxTemperatureWithCounters extends Configured implements Tool {
+
+    enum Temperature {
+        MISSING,
+        MALFORMED
+    }
+
+    static class MaxTemperatureMapperWithCounters
+            extends Mapper<LongWritable, Text, Text, IntWritable> {
+
+        private NcdcRecordParser parser = new NcdcRecordParser();
+
+        @Override
+        protected void map(LongWritable key, Text value, Context context)
+                throws IOException, InterruptedException {
+
+            parser.parse(value);
+            if (parser.isValidTemperature()) {
+                int airTemperature = parser.getAirTemperature();
+                context.write(new Text(parser.getYear()),
+                        new IntWritable(airTemperature));
+            } else if (parser.isMalformedTemperature()) {
+                System.err.println("Ignoring possibly corrupt input: " + value);
+                context.getCounter(Temperature.MALFORMED).increment(1);
+            } else if (parser.isMissingTemperature()) {
+                context.getCounter(Temperature.MISSING).increment(1);
+            }
+
+            // dynamic counter
+            context.getCounter("TemperatureQuality", parser.getQuality()).increment(1);
+        }
+    }
+
+    public int run(String[] args) throws Exception {
+        Job job = JobBuilder.parseInputAndOutput(this, getConf(), args);
+        if (job == null) {
+            return -1;
+        }
+
+        job.setOutputKeyClass(Text.class);
+        job.setOutputValueClass(IntWritable.class);
+
+        job.setMapperClass(MaxTemperatureMapperWithCounters.class);
+        job.setCombinerClass(MaxTemperatureReducer.class);
+        job.setReducerClass(MaxTemperatureReducer.class);
+
+        return job.waitForCompletion(true) ? 0 : 1;
+    }
+
+    public static void main(String[] args) throws Exception {
+        int exitCode = ToolRunner.run(new MaxTemperatureWithCounters(), args);
+        System.exit(exitCode);
+    }
+}
+```
+
+##### **1. 动态计数器**
+
+上述代码还使用了动态计数器，这是一种不由java枚举类型定义的计数器，如：
+
+```java
+// 两个String类型的输入参数，分别代表组名称和计数器名称
+public Counter getCounter(String groupName, String counterName)
+```
+
+##### **2. 获取计数器**
+
+```java
+public class MissingTemperatureFilelds extends Configured implements Tool {
+
+    public int run(String[] args) throws Exception {
+        if (args.length != 1) {
+            JobBuilder.printUsage(this, "<job ID>");
+            return -1;
+        }
+        String jobID = args[0];
+        Cluster cluster = new Cluster(getConf());
+
+        // 以作业ID为输入参数调用getJob方法，从Cluster中获取一个Job对象
+        Job job = cluster.getJob(JobID.forName(jobID));
+        if (job == null) {
+            System.err.printf("No job with ID %s found\n", jobID);
+            return -1;
+        }
+
+        if (!job.isComplete()) {
+            System.err.printf("Job %s is not complete\n", jobID);
+            return -1;
+        }
+
+        // 确认该作业已完成，调用getCounters方法返回一个Counters对象，封装了该作业的所有计数器
+        Counters counters = job.getCounters();
+        long missing = counters.findCounter(
+                MaxTemperatureWithCounters.Temperature.MISSING).getValue();
+        long total = counters.findCounter(TaskCounter.MAP_INPUT_RECORDS).getValue();
+
+        System.out.printf("Records with missing temperature fields: %.2f%%\n",
+        100.0 * missing / total);
+
+        return 0;
+    }
+
+    public static void main(String[] args) throws Exception {
+        int exitCode = ToolRunner.run(new MissingTemperatureFilelds(), args);
+        System.exit(exitCode);
+    }
+}
+```
+
+#### 用户定义的Streaming计数器
+
+使用Streaming 的 MapReduce 程序可以向标准错误流发送一行特殊格式的信息来增加计数器的值，这种计数可以作为一种计数器控制手段，信息的格式如下：`reporter:counter:group,counter,amount`
+
+### **9.2 排序**
+
+#### 准备
+
+```java
+public class SortDataPreprocessor extends Configured implements Tool {
+
+    static class ClearnerMapper extends Mapper<LongWritable, Text, IntWritable, Text> {
+        private NcdcRecordParser parser = new NcdcRecordParser();
+
+        @Override
+        protected void map(LongWritable key, Text value, Context context)
+            throws IOException, InterruptedException {
+            
+            // 过滤输入数据，并移除包含由无效气温的记录，将天气信息转换为SequenceFile格式
+            parser.parse(value);
+            if (parser.isValidTemperature()) {
+                context.write(new IntWritable(parser.getAirTemperature()), value);
+            }
+        }
+    }
+
+    public int run(String[] args) throws Exception {
+        Job job = JobBuilder.parseInputAndOutput(this, getConf(), args);
+        if (job == null) {
+            return -1;
+        }
+
+        job.setMapperClass(ClearnerMapper.class);
+        job.setOutputKeyClass(IntWritable.class);
+        job.setOutputValueClass(Text.class);
+        job.setNumReduceTasks(0);
+        job.setOutputFormatClass(SequenceFileOutputFormat.class);
+        SequenceFileOutputFormat.setCompressOutput(job, true);
+        SequenceFileOutputFormat.setOutputCompressorClass(job, GzipCodec.class);
+        SequenceFileOutputFormat.setOutputCompressionType(job, SequenceFile.CompressionType.BLOCK);
+
+        return job.waitForCompletion(true) ? 0 : 1;
+    }
+
+    public static void main(String[] args) throws Exception {
+        int exitCode = ToolRunner.run(new SortDataPreprocessor(), args);
+        System.exit(exitCode);
+    }
+}
+```
+
+#### 部分排序
+
+```java
+public class SortByTemperatureUsingHashPartitioner extends Configured implements Tool {
+
+    public int run(String[] args) throws Exception {
+        Job job = JobBuilder.parseInputAndOutput(this, getConf(), args);
+        if (job == null) {
+            return -1;
+        }
+
+        job.setInputFormatClass(SequenceFileInputFormat.class);
+        // 程序调用默认的HashParitioner 按 IntWritable 键排序顺序文件
+        job.setOutputKeyClass(IntWritable.class);
+        job.setOutputFormatClass(SequenceFileOutputFormat.class);
+        SequenceFileOutputFormat.setCompressOutput(job, true);
+        SequenceFileOutputFormat.setOutputCompressorClass(job, GzipCodec.class);
+        SequenceFileOutputFormat.setOutputCompressionType(job, SequenceFile.CompressionType.BLOCK);
+
+        return job.waitForCompletion(true) ? 0 : 1;
+    }
+
+    public static void main(String[] args) throws Exception {
+        int exitCode = ToolRunner.run(new SortByTemperatureUsingHashPartitioner(), args);
+        System.exit(exitCode);
+    }
+}
+```
+
+键的排列顺序是由RawComparator 控制的，规则如下：
+
+- 1.若属性mapreduce.job.output.key.comparator.class 已经显示设置或者通过Job类 的setSortComparatorClass 方法进行设置，则使用该类的实例
+- 2.否则键必须是WritableComparable的子类，并使用针对该键类的已登记的comparator
+- 3.如果还没有已登记的comparator，则使用RawComparator，RawComparator 将字节流反序列化为一个对象，在由WritableComparable的compareTo方法操作
+
+#### 全排序
+
+如何用hadoop产生一个全局排序的文件？最简单的方法是使用一个分区，事实上仍有替代方案：
+
+- 首先创建一系列排好序的文件
+- 其次串联这些文件
+- 最后生成一个全局排序好的文件
+
+获取气温分布信息意味着可以建立一系列分布非常均匀的分区，但由于该操作需要遍历整个数据集因此并不实用，通过对键空间进行采样可以较为均匀的划分数据集。采样的核心思想是只查看一小部分键，获得键的近似分布，并由此建立分区，Hadoop内置了若干采样器，不需要用户自己写
+
+InputSampler类实现了Sampler接口
+
+```java
+public interface Sampler<K, V> {
+    K[] getSample(InputFormat<K, V> inf, Job job)
+        throws IOException, InterruptedException;
+}
+```
+
+该接口由InputSampler类的静态方法writePartitionFile调用，目的是创建一个顺序文件来存储定义分区的键
+
+```java
+public class SortByTemperatureUsingTotalOrderPartitioner extends Configured implements Tool {
+
+    public int run(String[] args) throws Exception {
+        Job job = JobBuilder.parseInputAndOutput(this, getConf(), args);
+        if (job == null) {
+            return -1;
+        }
+
+        job.setInputFormatClass(SequenceFileInputFormat.class);
+        job.setOutputKeyClass(IntWritable.class);
+        job.setOutputFormatClass(SequenceFileOutputFormat.class);
+        SequenceFileOutputFormat.setCompressOutput(job, true);
+        SequenceFileOutputFormat.setOutputCompressorClass(job, GzipCodec.class);
+        SequenceFileOutputFormat.setOutputCompressionType(job, SequenceFile.CompressionType.BLOCK);
+
+        job.setPartitionerClass(TotalOrderPartitioner.class);
+
+        // 使用RandomSampler以指定的采样率均匀的从一个数据集中选取样本，只要任何一个限制条件满足即停止采样
+        // 采样器在客户端运行
+        InputSampler.Sampler<IntWritable, Text> sampler = new
+                InputSampler.RandomSampler<IntWritable, Text>(0.1, 10000, 10);
+
+        InputSampler.writePartitionFile(job, sampler);
+
+        // 为了和集群上运行的其他任务共享分区文件，InputSampler 需将其所写的分区文件加到分布式缓存中
+        Configuration conf = job.getConfiguration();
+        String partitionFile = TotalOrderPartitioner.getPartitionFile(conf);
+        URI partitionUri = new URI(partitionFile);
+        job.addCacheFile(partitionUri);
+
+        return job.waitForCompletion(true) ? 0 : 1;
+    }
+
+    public static void main(String[] args) throws Exception {
+        int exitCode = ToolRunner.run(new SortByTemperatureUsingHashPartitioner(), args);
+        System.exit(exitCode);
+    }
+}
+```
+
+#### 辅助排序（二次排序）
+
+MapReduce 框架在记录到达reducer之前按键对记录排序，但键所对应的值并没有排序，但是有时候也许要通过特定的方法对键进行排序和分组等以实现对值的排序
+
+例子：设计一个MapReduce程序以计算每年的最高气温
+
+首先构造一个同时包含年份和气温信息的组合键，然后对键先按年份升序排序，再按气温降序排序，如果仅使用键的，会导致同一年份的记录可能有不同的键，这样的话记录不会被送到同一个reducer中
+
+通过设置一个按照键的年份进行分区的partitioner，仅确保同一年的记录会被发送到同一个reducer中，但它不会改变reducer在分区内按键分组的事实
+
+![partition](image/partition.png)
+
+该问题的最终解决方案是进行分组设置，如果reducer中的值按照键的年份分组，则一个reducer组包含同一年的所有记录，监狱这些记录已经按气温降序排序，所以各组的首条记录就是这一年的最高气温
+
+![partition2](image/partition2.png)
+
+对记录按键排序的方法总结为：
+
+- 定义包括自然键和自然值的组合键
+- 根据组合键对记录进行排序，即同时用自然键和自然值排序
+- 针对组合键进行分区和分组时均只考虑自然键
+
+```java
+public class MaxTemperatureUsingSecondarySort extends Configured implements Tool {
+
+    static class MaxTemperatureMapper
+            extends Mapper<LongWritable, Text, IntPair, NullWritable> {
+        private NcdcRecordParser parser = new NcdcRecordParser();
+
+        @Override
+        protected void map(LongWritable key, Text value, Context context)
+                throws IOException, InterruptedException {
+            parser.parse(value);
+            // 用IntPair类定义了一个代表年份和气温的组合键
+            // 解析Text，生成IntPair作为中间输出的key
+            if (parser.isValidTemperature()) {
+                context.write(new IntPair(parser.getYearInt(), parser.getAirTemperature()), NullWritable.get());
+            }
+        }
+    }
+
+    static class MaxTemperatureReducer
+            extends Reducer<IntPair, NullWritable, IntPair, NullWritable> {
+
+        // reudcer只负责把数据直接输出，没有对中间数据的处理，
+        // 但是如果没有reducer，中间结果会直接写到最终结果，没有group的过程了
+        // group过程先于reduce方法调用，此时传入reduce的已经是各组首条记录
+        @Override
+        protected void reduce(IntPair key, Iterable<NullWritable> value, Context context)
+                throws IOException, InterruptedException {
+            context.write(key, NullWritable.get());
+        }
+    }
+
+    // 自定的partitioner 以按照组合键的首字段（年份）进行分区
+    public static class FirstPartitioner extends Partitioner<IntPair, NullWritable> {
+
+        @Override
+        public int getPartition(IntPair key, NullWritable value, int numPartitions) {
+            return Math.abs(key.getFirst() * 127) % numPartitions;
+        }
+    }
+
+    // 中间输出结果按照该比较器进行排序，key比较器决定了key的排序方式
+    public static class KeyComparator extends WritableComparator {
+        protected KeyComparator() {
+            super(IntPair.class, true);
+        }
+
+        @Override
+        public int compare(WritableComparable w1, WritableComparable w2) {
+            IntPair ip1 = (IntPair) w1;
+            IntPair ip2 = (IntPair) w2;
+            // 第一个参数相等的前提下才比较第二个参数
+            int cmp = IntPair.compare(ip1.getFirst(), ip2.getFirst());
+            if (cmp != 0) {
+                return cmp;
+            }
+            return -IntPair.compare(ip1.getSecond(), ip2.getSecond());
+        }
+    }
+
+
+    // 中间结果输出在reducer的context上，通过该比较器进行判断
+    // 中间输出经过上一部已经是按序排列的，所以本例中输入第一列相同的IntPair会被排列在一起
+    // group比较器决定了同一组中哪个数据最终可以被输出
+    // reducer的run会一直在context.nextkey的nextKeyValue方法中调用该比较器，知道比较器返回非0
+    public static class GroupComparator extends WritableComparator {
+        protected GroupComparator() {
+            super(IntPair.class, true);
+        }
+        @Override
+        public int compare(WritableComparable w1, WritableComparable w2) {
+            IntPair ip1 = (IntPair) w1;
+            IntPair ip2 = (IntPair) w2;
+            return IntPair.compare(ip1.getFirst(), ip2.getFirst());
+        }
+    }
+
+    public int run(String[] args) throws Exception {
+        Job job = JobBuilder.parseInputAndOutput(this, getConf(), args);
+        if (job == null) {
+            return -1;
+        }
+
+        job.setMapperClass(MaxTemperatureMapper.class);
+
+        job.setPartitionerClass(FirstPartitioner.class);
+
+        // 为了按照年份升序，气温降序排列键，我们使用setSortComparatorClass设置一个自定义键comparator以抽取字段并执行比较操作
+        job.setSortComparatorClass(KeyComparator.class);
+
+        // 为了按照年份对键进行分组，我们使用SetGroupComparatorClass来自定一个comparator，只取键的首字段进行比较
+        job.setGroupingComparatorClass(GroupComparator.class);
+
+        job.setReducerClass(MaxTemperatureReducer.class);
+        job.setOutputKeyClass(IntPair.class);
+        job.setOutputValueClass(NullWritable.class);
+
+        return job.waitForCompletion(true) ? 0 : 1;
+    }
+
+    public static void main(String[] args) throws Exception {
+        int exitCode = ToolRunner.run(new MaxTemperatureUsingSecondarySort(), args);
+        System.exit(exitCode);
+    }
+}
+```
+
+### **9.3 连接**
+
+Mapreduce能够执行大型数据集间的连接操作（join），出了写MapReduce程序还可以考虑采用更高级的框架，如Pig，Hive，Cascading，Cruc或Spark等，它们都将连接操作视为整个实现的核心
+
+![innerjoin](image/innerjoin.png)
+
+连接操作如果由mapper执行，则被称为`map端连接`，如果由reducer执行，则被称为`reduce端连接`
+
+#### map端连接
+
+在两个大规模输入数据集之间的map端连接会在数据到达map函数之前就执行连接操作，为达到该目的，各map的输入数据必须先分区并且以特定方式排序，各个输入数据集会被划分成相同数量的分区，并且均按相同的键排序，同一键的所有记录会被放在同一个分区中
+
+#### reduce端连接
+
+由于reduce端连接并不要求输入数据集符合特定结构，因而reduce端连接比map端连接更加常用，但是由于数据集经过shuffle过程，所以reduce端连接效率低一点，基本思路是：
+
+- mapper为各个记录标记源
+- 使用连接键作为map的输出键
+- 使键相同的记录放在同一个reducer中
+
+以下方式可以实现reduce端连接
+
+##### **1. 多输入**
+
+MultipleInput类方便解析和标注各个源
+
+##### **2. 辅助排序**
+
+为了更好的执行连接操作，一个源的数据排列在另一个源的数据前是非常重要的，对于天气数据连接来说，气象站记录的值必须是最先看到的，这样reducer能够将气象站名称填到天气记录之中再马上输出
+
+为标记每个记录，我们使用TextPair，包括键（气象站ID）和标记，这里标记是一个虚拟字段，其唯一目的是用于记录的排序，使气象站的记录比天气记录先到达
+
+```java
+public class JoinStationMapper extends Mapper<LongWritable, Text, TextPair, Text> {
+    private NcdcStationMetadataParser parser = new NcdcStationMetadataParser();
+
+    // 对气象站记录标记为0
+    @Override
+    protected void map(LongWritable key, Text value, Context context)
+        throws IOException, InterruptedException {
+        if (parser.parse(value)) {
+            context.write(new TextPair(parser.getStationId(), "0"), new Text(parser.getStationName()));
+        }
+    }
+}
+```
+
+```java
+public class JoinRecordMapper extends Mapper<LongWritable, Text, TextPair, Text> {
+    private NcdcRecordParser parser = new NcdcRecordParser();
+
+    // 对天气记录标记为1
+    @Override
+    protected void map(LongWritable key, Text value, Context context)
+            throws IOException, InterruptedException {
+        parser.parse(value);
+        context.write(new TextPair(parser.getStationId(), "1"), value);
+    }
+}
+```
+
+reducer知道自己会先收到气象站记录，因此从中抽取出值，并将其作为后续每条输出记录的一部分写到输出文件中
+
+```java
+public class JoinReducer extends Reducer<TextPair, Text, Text, Text> {
+
+    @Override
+    protected void reduce(TextPair key, Iterable<Text> values, Context context)
+        throws IOException, InterruptedException {
+        Iterator<Text> iter = values.iterator();
+        Text stationName = new Text(iter.next());
+        while (iter.hasNext()) {
+            Text record = iter.next();
+            Text outValue = new Text(stationName.toString() + "\t" + record.toString());
+            context.write(key.getFirst(), outValue);
+        }
+    }
+}
+```
+
+MapReduce 的shuffle过程在设计时就会自动调用键的compareTo方法来按键排序，我们将键拓展为组合键，所以会调用TextPair类的compareTo方法排序
+
+```java
+public class JoinRecordWithStationName extends Configured implements Tool {
+
+    // 根据组合键的第一个字段StationID进行分区和分组
+    public static class KeyPartitioner extends Partitioner<TextPair, Text> {
+
+        @Override
+        public int getPartition(TextPair key, Text value, int numPartitioners) {
+            return (key.getFirst().hashCode() & Integer.MAX_VALUE) % numPartitioners;
+        }
+    }
+
+    public int run(String[] args) throws Exception {
+        if (args.length != 3) {
+            JobBuilder.printUsage(this, "<ncdc input> <station input> <output>");
+            return -1;
+        }
+
+        Job job = new Job(getConf(), "Join weather records with station names");
+        job.setJarByClass(getClass());
+
+        Path ncdcInputPath = new Path(args[0]);
+        Path stationInputPath = new Path(args[1]);
+        Path outputPath = new Path(args[2]);
+
+        MultipleInputs.addInputPath(job, ncdcInputPath, TextInputFormat.class, JoinRecordMapper.class);
+        MultipleInputs.addInputPath(job, stationInputPath, TextInputFormat.class, JoinStationMapper.class);
+        FileOutputFormat.setOutputPath(job, outputPath);
+
+        // 自定义分区
+        job.setPartitionerClass(KeyPartitioner.class);
+        // 自定义分组
+        job.setGroupingComparatorClass(TextPair.FirstComparator.class);
+
+        job.setMapOutputKeyClass(TextPair.class);
+
+        job.setReducerClass(JoinReducer.class);
+
+        job.setOutputKeyClass(Text.class);
+
+        return job.waitForCompletion(true) ? 0 : 1;
+    }
+
+    public static void main(String[] args) throws Exception {
+        int exitCode = ToolRunner.run(new JoinRecordWithStationName(), args);
+        System.exit(exitCode);
+    }
+}
+```
+
+整个过程如图所示, [参考文档](https://blog.csdn.net/it_lee_j_h/article/details/78777980)
+
+*存疑：shuffle过程那里应该是不用再自定义SortComparator吧？*
+
+分组最后部分是取相同组合键记录中最后一条记录作为reduce的输入key
+
+![reduceJoin](image/reduceJoin.png)
+
+### **9.4 边数据分布**
+
+边数据是作业所需的额外的只读数据，以辅助处理主数据集
+
+#### 利用JobConf来配置作业
+
+Configuration类的各种setter方法能够方便地配置作业的任意键值对，如果仅需向任务传递少量元数据则非常有用
+
+#### 分布式缓存
+
+与在作业配置中序列化数据的技术相比，Hadoop的分布式缓存机制更受青睐，它能够在任务运行过程中及时地将文件和存档复制到任务节点以供使用，为了节约网络带宽，再没一个作业中，各个文件通常只需要复制到一个节点一次
+
+##### 1. 用法
+
+对于使用GeneriOptionsParser的工具来说,用户可以使用-files选项指定待分发的文件，文件内包含以逗号隔开的URI列表，文件可以存放在本地文件系统，HDFS或者其他Hadoop可读文件系统之中，如果尚未指定文件系统，则这些文件被默认是本地的
+
+用户可以使用`-archives`选项向自己的任务中复制存档文件，这些文件会被解档到任务点，`-libjars`选项会把JAR文件添加到mapper和reducer任务的类路径中
+
+查找各气象站的最高气温并显示气象站名称，气象站文件是一个分布式缓存文件
+
+```java
+public class MaxTemperatureByStationNameUsingDistributedCacheFile extends Configured implements Tool {
+
+    // mapper仅仅输出 气象站id-气温 对
+    static class StationTemperatureMapper extends Mapper<LongWritable, Text, Text, IntWritable> {
+        private NcdcRecordParser parser = new NcdcRecordParser();
+
+        @Override
+        protected void map(LongWritable key, Text value, Context context)
+                throws IOException, InterruptedException {
+            parser.parse(value);
+
+            if (parser.isValidTemperature()) {
+                context.write(new Text(parser.getStationId()), new IntWritable(parser.getAirTemperature()));
+            }
+        }
+    }
+
+    // 不仅要查找最高气温，还需要根据换缓存文件查找气象站名称
+    static class MaxTemperatureReduceWithStationLookup extends Reducer<Text, IntWritable, Text, IntWritable> {
+        private NcdcStationMetadata metadata;
+
+        // 获取缓存文件 输入参数是文件的原始名称，文件的路径和任务的工作目录相同
+        @Override
+        protected void setup(Context context) throws IOException, InterruptedException {
+            metadata = new NcdcStationMetadata();
+            metadata.initialize(new File("stations-fixed-width.txt"));
+        }
+
+        @Override
+        protected void reduce(Text key, Iterable<IntWritable> values, Context context)
+                throws IOException, InterruptedException {
+            String stationName = metadata.getStationName(key.toString());
+
+            int maxValue = Integer.MIN_VALUE;
+            for (IntWritable value : values) {
+                maxValue = Math.max(maxValue, value.get());
+            }
+            context.write(new Text(stationName), new IntWritable(maxValue));
+        }
+    }
+
+    public int run(String[] args) throws Exception {
+        Job job = JobBuilder.parseInputAndOutput(this, getConf(), args);
+        if (job == null) {
+            return -1;
+        }
+
+        job.setOutputKeyClass(Text.class);
+        job.setOutputValueClass(IntWritable.class);
+
+        job.setMapperClass(StationTemperatureMapper.class);
+
+        // 为map端的map输出分组获得最高气温
+        job.setCombinerClass(MaxTemperatureReducer.class);
+        job.setReducerClass(MaxTemperatureReduceWithStationLookup.class);
+
+        return job.waitForCompletion(true) ? 0 : 1;
+    }
+
+    public static void main(String[] args) throws Exception {
+        int exitCode = ToolRunner.run(new MaxTemperatureByStationNameUsingDistributedCacheFile(), args);
+        System.exit(exitCode);
+    }
+}
+```
+
+##### 2. 工作机制
+
+- 当用户启动一个作业，Hadoop会把`-files`，`-archives`，`-libjars`等选项所指定的文件复制到分布式文件系统中（一般是HDFS）
+- 在任务运行之前，节点管理器将文件从分布式文件系统复制到本地磁盘（缓存）使任务能够访问文件，这时，这些文件就被视为本地化
+- 从任务角度来看，这些文件就已经在那了，以符号链接的方式指向任务的工作目录，此外由`-libjars`指定的文件会在任务启动前添加到任务的类路径中（classpath）
+
+节点管理器为缓存中的文件各维护一个计数器来统计这些文件的被使用情况
+
+##### 3. 分布式缓存API
+
+如果没有使用GenericOptionsParser，那么可以使用Job中的API将对象放进分布式缓存中
+
+在任务中获取分布式缓存文件在工作机制上和以前是一样
+
+### **9.5 MapReduce库类**
+
+Hadoop还为mapper和reducer提供了一个包含了常用函数的库
