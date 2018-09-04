@@ -3194,3 +3194,132 @@ Kerberis（一个成熟的开源网络认证协议）实现用户认证，Hadoop
 处于集群性能调优的目的，最好包含若干代表性强，使用频繁的作业，这样的话调优操作可以更具针对性，而不只是对通用场景进行调优
 
 如果想把自己的作业作为基准评测时，用户还需要为作业选择数据集合
+
+## 第11章 管理Hadoop
+
+### **11.1 HDFS**
+
+#### 永久性数据结构
+
+##### 1. namenode目录结构
+
+![directory](image/directory.png)
+
+![version](image/version.png)
+
+- layoutVersion 是一个负整数，描述HDFS持久性数据结构的版本，与Hadoop发布包的版本号无关
+- namespaceID 是文件系统命名空间的唯一标识符，在namenode首次格式化时创建
+- clusterID 是将HDFS集群作为一个整体赋予的唯一标识符，这里一个集群由多个命名空间组成，且每个命名空间由一个namenode管理
+- blockpoolID 是数据块池的唯一标识符，数据块池中包含了由一个namenode管理的命名空间中的所有文件
+- cTime 属性标记了namenode存储系统的创建时间
+- storageType 属性说明该存储目录包含的是namenode的数据结构
+- in_use.lock 文件是一个锁文件，namenode使用该文件为存储目录枷锁，可以避免其他namenode 实例同时使用同一个存储目录的情况
+- 此外还包括 edits，fsimage，seen_txid等二进制文件
+
+##### 2. 文件系统映像和编辑日志
+
+文件系统客户端执行写操作时（例如创建或者移动文件），这些事务首先被记录到编辑日志中，namenode在内存中维护文件系统的元数据，当编辑日志被修改时，相关元数据信息也同步更新，内存中的元数据可支持客户端的读请求
+
+编辑日志在概念上是单个实体，但是它体现为磁盘上的多个文件，任何一个时刻只有一个文件处于打开状态
+
+每个fsimage文件都是文件系统元数据的一个完整的永久检查点，如果namenode发生故障，最近的fsimage文件将被载入到内存以重构元数据的最近状态，再从相关点开始向前执行编辑日志中记录的每个事务
+
+每个fsimage文件包含文件系统中所有目录和文件inode的序列化信息，数据块存储在datanode中，但是fsimage文件并不描述datanode
+
+编辑日志会无限增长，恢复编辑日志中的各项事务，namenode 的重启操作会比较慢，解决方案是运行辅助namenode，为主namenode内存中的文件系统元数据创建检查点
+
+- 1.辅助Namenode请求主Namenode停止使用edits文件，暂时将新的写操作记录到一个新文件中，如edits.new。
+- 2.辅助Namenode节点从主Namenode节点获取fsimage和edits文件（采用HTTP GET）
+- 3.辅助Namenode将fsimage文件载入到内存，逐一执行edits文件中的操作，创建新的fsimage文件
+- 4.辅助Namenode将新的fsimage文件发送回主Namenode（使用HTTP PUT）
+- 5.主Namenode节点将从辅助Namenode节点接收的fsimage文件替换旧的fsimage文件，用步骤1产生的edits.new文件替换旧的edits文件（即改名）。同时更新fstime文件来记录检查点执行的时间
+
+![checkpoint](image/checkpoint.png)
+
+##### 3. 辅助namenode的目录结构
+
+辅助namenode的检查点目录的布局和主namenode的检查点目录布局相同
+
+##### 4. datanode的目录结构
+
+![datanode](image/datanode.png)
+
+- HDFS 数据块存储在以blk_为前缀名的文件中，文件名包含了该文件存户的块的原始字节数，每个块有一个相关联的.mata后缀的元数据文件
+- 每个块属于一个数据块池，每个数据块池有自己的存储目录，目录根据数据块池ID组成(和namenode的VERSION文件中的数据块池ID相同)
+
+当目录中存储的块数据量增加到一定规模时，DataNode会创建一个新的目录，用于保存新的块及元数据。当目录中的块数据量达到64（可由dfs.DataNode.numblocks属性确定）时，便会新建一个子目录，这样就会形成一个更宽的文件树结构，避免了由于存储大量数据块而导致目录很深，使检索性能免受影响
+
+#### 安全模式
+
+namenode启动时，首先将映像文件（fsimage）载入内存，并执行编辑日志（edits）中的各项编辑操作，一旦在内存中成功建立文件系统元数据的映像，则创建一个新的fsimage（不需要借助辅助namenode）和一个空的编辑日志，在这个过程中，namenode运行在安全模式，意味着namenode的文件系统对于客户端来说是只读的
+
+系统中的数据块位置并不是由namenode维护的，而是以块列表的形式存储在datanode中，在系统正常操作期间，namenode会在内存中保留所有块信息的映射信息，在安全模式下，各个datanode会向namemode发送最新的块列表信息，namenode了解到足够多的块位置信息之后，即可高效运行文件系统
+
+namenode会在30秒中之后就退出安全模式
+
+#### 日志审计
+
+HDFS的日志能够记录所有文件系统访问请求，有些组织需要这项特性来进行审计，每个HDFS事件均在审计日志中生成一行日志记录
+
+#### 工具
+
+- dfsadmin工具既可以查找HDFS状态信息，又可在HDFS上执行管理操作
+- 文件系统检查工具fsck可以检查HDFS中文件的健康状态
+- datanode块扫描器 定期检查本节点上的所有块，从而在客户端读到坏块之前及时地检查和修复坏块
+- 均衡器是Hadoop的一个守护进程，他将块从忙碌的datanode移到相对空闲的datanode，从而重新分配块，它不断移动块，直到集群达到均衡，即每个datanode的使用率和集群的使用率接近
+
+### **11.2 监控**
+
+监控的目标在于检测集群在何时未提供所期望的服务
+
+- 日志
+- 度量和JMX(Java Management Extensions)：Hadoop守护进程收集事件和度量相关的信息，这些信息统称为度量，例如各个datanode会收集以下度量：写入的字节数，块的复本数和客户端发起的读操作请求数
+
+度量为管理员服务，计数器主要为MapReduce用户服务
+
+所有的Hadoop度量都发布给JMX，可以使用标准的JMX工具查看
+
+### **11.3 维护**
+
+#### 日常管理过程
+
+1. 元数据备份
+2. 数据备份（distcp）
+3. 文件系统检查（fsck）
+4. 文件系统均衡器
+
+#### 委任和解除节点
+
+委任节点
+
+- 1.配置创建include文件，在文件中添加地址
+- 2.运行以下命令，将经过审核的datanode更新至namenode信息
+  - `hadoop dfsadmin -refreshNodes`
+- 3.运行以下命令，将经过审核的nodemanager更新至resourcemanager信息
+  - `yarn rmadmin -refreshNodes`
+- 4.更新slaves文件，与include相同
+- 5.启动新的datanode和nodemanager
+- 6.通过网页界面检查是否成功更新
+
+移除节点：
+
+- 1.将要移除的节点添加到exclude文件中，不更新include文件
+- 2.运行以下命令，将经过审核的datanode更新至namenode信息  
+  - `hadoop dfsadmin -refreshNodes`
+- 3.运行以下命令，将经过审核的nodemanager更新至resourcemanager信息
+  - `yarn rmadmin -refreshNodes`
+- 4.开始解除过程，解除的DataNode会把快信息复制到其他DataNode上
+- 5.解除完毕后，从include文件中将这些节点移除。并运行
+  - `hadoop dfsadmin -refreshNodes`
+  - `yarn rmadmin -refreshNodes`
+- 6.从slaves文件移除节点
+
+#### 升级
+
+将Hadoop版本升级成另外一个版本时需要仔细考虑需要升级步骤，同时还需要考虑：API兼容性，数据兼容性和连接兼容性
+
+- API兼容性考虑用户代码和发行的Hadoop API之间的对比
+- 数据兼容性考虑持久数据和元数据的格式
+- 连接兼容性考虑通过利用RPC和HTTP这样的连接协议来实现客户端和服务器端之间的互操作性
+
+集群管理工具：Cloudera Manager，Apache Ambari
