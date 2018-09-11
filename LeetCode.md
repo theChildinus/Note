@@ -600,3 +600,493 @@ class Solution {
     }
 }
 ```
+
+### 问题：Container With Most Water
+
+题号：11
+
+[思路](https://leetcode.com/problems/container-with-most-water/discuss/6100/Simple-and-clear-proofexplanation)
+
+1. 所有其他容器的宽度较小，因此需要更高的水位才能容纳更多的水。
+2. 第一行和最后一行中较小的一行不支持较高的水位，因此可以安全地从进一步的考虑中删除。
+
+```java
+public int maxArea(int[] height) {
+    int i = 0, j = height.length - 1;
+    int maxArea = 0;
+    while (i < j) {
+        maxArea = Math.max(maxArea, Math.min(height[i], height[j]) * (j - i));
+        if (height[i] < height[j]) {
+            i++;
+        } else {
+            j--;
+        }
+    }
+    return maxArea;
+}
+```
+
+### 问题：Trapping Rain Water
+
+题号：42
+
+问题描述：雨水积累
+
+思路：两高夹一矮才可能存到水
+
+- 从左向右遍历数组，找到每个元素左侧最大的数
+- 从右向左遍历数组，找到每个元素右侧最大的数
+- 某处的积水量 = min(left[i], right[i]) - height[i]
+
+```java
+public int trap(int[] height) {
+    int n = height.length;
+    if (n <= 2) return 0;
+    int[] left = new int[height.length];
+    int[] right = new int[height.length];
+
+    int lmax = height[0];
+    int rmax = height[n - 1];
+    for (int i = 0; i < n; i++) {
+        if (height[i] > lmax) {
+            left[i] = height[i];
+            lmax = height[i];
+        } else {
+            left[i] = lmax;
+        }
+
+    }
+    for (int j = n - 1; j >= 0; j--) {
+        if (height[j] > rmax) {
+            right[j] = height[j];
+            rmax = height[j];
+        } else {
+            right[j] = rmax;
+        }
+    }
+
+    int ret = 0;
+    for (int i = 0; i < n; i++) {
+        ret += Math.min(left[i], right[i]) - height[i];
+    }
+    return ret;
+}
+```
+
+优化：将left数组和right数组改为left_max和right_max两个值
+
+```java
+int trap(vector<int>& height)
+{
+    int left = 0, right = height.size() - 1;
+    int ans = 0;
+    int left_max = 0, right_max = 0;
+    while (left < right) {
+        if (height[left] < height[right]) {
+            height[left] >= left_max ? (left_max = height[left]) : ans += (left_max - height[left]);
+            ++left;
+        }
+        else {
+            height[right] >= right_max ? (right_max = height[right]) : ans += (right_max - height[right]);
+            --right;
+        }
+    }
+    return ans;
+}
+```
+
+### 问题：求数组中是否包含三个元素递增的子序列
+
+题号：334
+
+思路：记录最小和第二小的元素位置，找到一个比两个都大的元素返回true
+
+```java
+    public boolean increasingTriplet(int[] nums) {
+        if(nums.length < 3)
+            return false;
+
+        int small = Integer.MAX_VALUE, big = Integer.MAX_VALUE;
+        for (int n : nums) {
+            if (n <= small) { small = n; } // update small if n is smaller than both
+            else if (n <= big) { big = n; } // update big only if greater than small but smaller than big
+            else return true; // return if you find a number bigger than both
+        }
+        return false;
+    }
+```
+
+### 问题：最长的连续序列
+
+题号：128
+
+思路1:排序
+
+```java
+public int longestConsecutive(int[] nums) {
+    if (nums.length == 0) {
+        return 0;
+    }
+
+    Arrays.sort(nums);
+
+    int longestStreak = 1;
+    int currentStreak = 1;
+
+    for (int i = 1; i < nums.length; i++) {
+        if (nums[i] != nums[i-1]) {
+            if (nums[i] == nums[i-1]+1) {
+                currentStreak += 1;
+            }
+            else {
+                longestStreak = Math.max(longestStreak, currentStreak);
+                currentStreak = 1;
+            }
+        }
+    }
+
+    return Math.max(longestStreak, currentStreak);
+}
+
+```
+
+思路2:hashset
+
+```java
+public int longestConsecutive(int[] nums) {
+    Set<Integer> num_set = new HashSet<Integer>();
+    for (int num : nums) {
+        num_set.add(num);
+    }
+
+    int longestStreak = 0;
+
+    for (int num : num_set) {
+        if (!num_set.contains(num-1)) { // num为左边界元素，即子序列中起始的元素
+            int currentNum = num;
+            int currentStreak = 1;
+            // 查找自序列的右边界，记录长度
+            while (num_set.contains(currentNum+1)) {
+                currentNum += 1;
+                currentStreak += 1;
+            }
+
+            longestStreak = Math.max(longestStreak, currentStreak);
+        }
+    }
+
+    return longestStreak;
+}
+```
+
+### 查找重复元素
+
+题号：287
+
+思路：sort，set，[Floyd's Tortoise and Hare](https://blog.csdn.net/wr339988/article/details/53617914)
+
+[1, 2, 4, 3, 2]中，前一个2是A点，代表重复的数，从该位置进入环，后一个2是两个指针相遇的点，慢指针是一步一步走，快指针是两步两步走
+
+```java
+public int findDuplicate(int[] nums) {
+    // Find the intersection point of the two runners.
+    int tortoise = nums[0];
+    int hare = nums[0];
+    do {
+        tortoise = nums[tortoise];
+        hare = nums[nums[hare]];
+    } while (tortoise != hare);
+
+    // Find the "entrance" to the cycle.
+    int ptr1 = nums[0];
+    int ptr2 = tortoise;
+    while (ptr1 != ptr2) {
+        ptr1 = nums[ptr1];
+        ptr2 = nums[ptr2];
+    }
+
+    return ptr1;
+}
+```
+
+## **String**
+
+### 问题：Longest Common Prefix
+
+题号：14
+
+思路：用第一字符作为母串，后面的字符串挨个去匹配，查找最长前缀
+
+```java
+public String longestCommonPrefix(String[] strs) {
+
+    String prefix = "";
+    String temp = "";
+
+    if (strs.length == 0) return prefix;
+    if (strs.length == 1) return strs[0];
+    for (int i = 1; i <= strs[0].length(); i++) {
+        prefix = temp;
+        temp = strs[0].substring(0,i);
+        for (int j = 1; j < strs.length; j++) {
+            if (strs[j].indexOf(temp)!=0) return prefix;
+        }
+    }
+
+    return temp;
+}
+```
+
+### 问题：Length of Last Word
+
+题号：58
+
+思路：从后向前遍历字符串，记录最后一个单词长度，遇到空格返回
+
+```java
+public int lengthOfLastWord(String s) {
+    if (s == null || s.length() == 0) return 0;
+    int n = s.length();
+    int cnt = 0;
+    for (int i = n - 1; i >= 0; i--) {
+        if (s.charAt(i) != ' ') cnt++;
+        else {
+            if (cnt > 0) return cnt;
+        }
+    }
+    return cnt;
+}
+```
+
+### 问题：寻找第一个只出现一次的字符串
+
+题号：387
+
+思路：统计法，另外一种，分别从前往后 和 从后往前 找字符下标，两个下标相同即该字符出现了一次的
+
+```java
+public int firstUniqChar(String s) {
+    if (s == null || s.length() == 0) return -1;
+
+    int res = s.length();
+    for (int i = 'a'; i <= 'z'; i++) {
+        int index = s.indexOf(i);
+        if (index == -1) continue;
+        if (index == s.lastIndexOf(i))
+            res = Math.min(res, index);
+    }
+
+    return res == s.length() ? - 1 : res;
+}
+```
+
+### 问题：同构字符串
+
+题号：205 290
+
+```txt
+Input: s = "egg", t = "add"
+Output: true
+```
+
+```txt
+Input: s = "foo", t = "bar"
+Output: false
+```
+
+思路：建立从s串到t串的映射，不允许不同字符映射到同一个字符上，将s串用t串替换，最后比较s串和t串
+
+```java
+public boolean isIsomorphic(String s, String t) {
+    if (s == null || t == null) return false;
+
+    StringBuilder sb = new StringBuilder(s);
+    Map<Character, Character> map = new HashMap<>();
+
+    for(int i = 0; i < s.length(); i++) {
+        char ss = sb.charAt(i);
+        char tt = t.charAt(i);
+        if (!map.containsKey(ss)) {
+            if (!map.containsValue(tt)) {
+                map.put(ss, tt);
+                sb.setCharAt(i, tt);
+            }
+        } else {
+            sb.setCharAt(i, map.get(ss));
+        }
+    }
+
+    if (sb.toString().equals(t)) return true;
+    else return false;
+}
+```
+
+### 问题：聚集同类型的字符串
+
+题号：49
+
+```txt
+Input: ["eat", "tea", "tan", "ate", "nat", "bat"],
+Output:
+[
+  ["ate","eat","tea"],
+  ["nat","tan"],
+  ["bat"]
+]
+```
+
+思路：利用排序，对每个字符串排序在map中找到相同key的，然后插入
+
+```java
+public List<List<String>> groupAnagrams(String[] strs) {
+    if (strs == null || strs.length == 0) return new ArrayList<List<String>>();
+
+    Map<String, List<String>> map = new HashMap<String, List<String>>();
+    for (String s : strs) {
+        // 排序的地方可以优化，用计数来代替 例如abc = #1#1#1#0... abb = #1#2#0#0...
+        char[] ca = s.toCharArray();
+        Arrays.sort(ca);
+        String keyStr = String.valueOf(ca);
+        if (!map.containsKey(keyStr)) map.put(keyStr, new ArrayList<String>());
+        map.get(keyStr).add(s);
+    }
+    return new ArrayList<List<String>>(map.values());
+}
+```
+
+### 问题：最大的数
+
+题号：179
+
+思路：取两个数，取两种组合中较大的一种进行排序
+
+```java
+class Solution {
+    private class LargerNumberComparator implements Comparator<String> {
+        @Override
+        public int compare(String a, String b) {
+            String order1 = a + b;
+            String order2 = b + a;
+           return order2.compareTo(order1);
+        }
+    }
+
+    public String largestNumber(int[] nums) {
+        // Get input integers as strings.
+        String[] asStrs = new String[nums.length];
+        for (int i = 0; i < nums.length; i++) {
+            asStrs[i] = String.valueOf(nums[i]);
+        }
+
+        // Sort strings according to custom comparator.
+        Arrays.sort(asStrs, new LargerNumberComparator());
+
+        // If, after being sorted, the largest number is `0`, the entire number
+        // is zero.
+        if (asStrs[0].equals("0")) {
+            return "0";
+        }
+
+        // Build largest number from sorted array.
+        String largestNumberStr = new String();
+        for (String numAsStr : asStrs) {
+            largestNumberStr += numAsStr;
+        }
+
+        return largestNumberStr;
+    }
+}
+```
+
+### 问题：Remove Duplicate Letters
+
+题号：316
+
+```txt
+Input: "bcabc"
+Output: "abc"
+```
+
+```txt
+Input: "cbacdcbc"
+Output: "acdb"
+```
+
+思路：[连接](https://leetcode.com/problems/remove-duplicate-letters/discuss/76762/Java-O(n)-solution-using-stack-with-detail-explanation)
+
+
+
+```java
+public String removeDuplicateLetters(String s) {
+    Stack<Character> stack = new Stack<>();
+    int[] count = new int[26];
+    char[] arr = s.toCharArray();
+    for(char c : arr) {
+        count[c-'a']++;
+    }
+    boolean[] visited = new boolean[26];
+    for(char c : arr) {
+        count[c-'a']--;
+        if(visited[c-'a']) {
+            continue;
+        }
+        // 不断更新堆栈，使堆栈中的元素尽可能的小
+        // count[stack.peek() - 'a'] > 0 用于判断后面的字符中是否还存在该字符，如果存在就可以从栈中弹出，如果不存在就不能弹出
+        while(!stack.isEmpty() && stack.peek() > c && count[stack.peek()-'a'] > 0) {
+            visited[stack.peek()-'a'] = false;
+            stack.pop();
+        }
+        stack.push(c);
+        visited[c-'a'] = true;
+    }
+    StringBuilder sb = new StringBuilder();
+    for(char c : stack) {
+        sb.append(c);
+    }
+    return sb.toString();
+}
+```
+
+### 问题：Excel Sheet Column Title
+
+题号：168
+
+```txt
+    1 -> A
+    2 -> B
+    3 -> C
+    ...
+    26 -> Z
+    27 -> AA
+    28 -> AB
+    ...
+```
+
+```java
+public String convertToTitle(int n) {
+    if (n == 0) return "";
+
+    StringBuilder sb = new StringBuilder();
+    while (n > 0) {
+        n--;
+        sb.insert(0, (char)('A' + n % 26));
+        n /= 26;
+    }
+    return sb.toString();
+}
+```
+
+反过来：
+
+```java
+public int titleToNumber(String s) {
+    if (s == null) return -1;
+    int ans = 0;
+    int power = 1;
+    for (char c : s.toCharArray()) {
+        ans *= 26;
+        ans += c - 'A' + 1;
+    }
+    return ans;
+}
+```
