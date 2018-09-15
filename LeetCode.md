@@ -1090,3 +1090,664 @@ public int titleToNumber(String s) {
     return ans;
 }
 ```
+
+### 问题：Longest Palindromic Substring 最长回文
+
+题号：5
+
+思路：动态规划
+
+假设`dp[i][j]`表示字串`s[i...j]`是否是回文，那么对于动态规划dp的表达方式为：
+
+初始化：
+
+- `dp[i][i] = true` `0 <= i <= n - 1`
+- `dp[i][i + 1] = true`
+  - `if s[i] == s[i + 1]`
+- `others = false`
+
+动态规划状态转移方程
+
+- `dp[i][j] = true`
+  - `dp[i + 1][j - 1] == true` && `if s[i] == s[j]`
+- `dp[i][j] = false`
+  - `if s[i] != s[j]`
+
+```java
+public String longestPalindrome(String s) {
+    int n = s.length();
+    String res = "";
+
+    boolean[][] dp = new boolean[n][n];
+
+    for (int i = n - 1; i >= 0; i--) {
+        for (int j = i; j < n; j++) {
+            dp[i][j] = s.charAt(i) == s.charAt(j) && (j - i < 3 || dp[i + 1][j - 1]);
+
+            if (dp[i][j] && (res == null || j - i + 1 > res.length())) {
+                res = s.substring(i, j + 1);
+            }
+        }
+    }
+
+    return res;
+}
+```
+
+思路：中心法，从中心向两边扩充，分为两种情况，aba从b开始向两边扩充，abba从中间的bb向两边扩充
+
+```java
+private int expandAround(String s, int left, int right) {
+    int l = left, r = right;
+    while (l >= 0 && r < s.length() && s.charAt(l) == s.charAt(r)) {
+        l--;
+        r++;
+    }
+    return r - l - 1;
+}
+
+public String longestPalindrome(String s) {
+    if (s.isEmpty()) return "";
+    if (s.length() == 1) return s;
+
+    int start = 0, end = 0;
+    for (int i = 0; i < s.length(); i++) {
+        int len1 = expandAround(s, i, i);
+        int len2 = expandAround(s, i, i + 1);
+        int len = Math.max(len1, len2);
+        if (len > end - start) {
+            start = i - (len - 1) / 2;
+            end = i + len / 2;
+        }
+    }
+    return s.substring(start, end + 1);
+}
+```
+
+### 问题：Generate Parentheses
+
+题号：22
+
+思路：递归
+
+```java
+public List<String> generateParenthesis(int n) {
+        List<String> list = new ArrayList<String>();
+        backtrack(list, "", 0, 0, n);
+        return list;
+    }
+
+    public void backtrack(List<String> list, String str, int open, int close, int max){
+
+        if(str.length() == max*2){
+            list.add(str);
+            return;
+        }
+
+        // 左括号少于指定个数n时添加
+        if(open < max)
+            backtrack(list, str+"(", open+1, close, max);
+        // 右括号少于左括号的时候才能添加
+        if(close < open)
+            backtrack(list, str+")", open, close+1, max);
+}
+```
+
+## Math
+
+### 问题：Plus One
+
+题号：66
+
+```txt
+Input: [1,2,3]
+Output: [1,2,4]
+Explanation: The array represents the integer 123.
+```
+
+```java
+public int[] plusOne(int[] digits) {
+    if(digits == null || digits.length == 0) {
+        return new int[]{};
+    }
+
+    List<Integer> result = new ArrayList<>();
+    int sum = 1;
+    for(int i = digits.length - 1; i >= 0; i--) {
+        sum += digits[i];
+        result.add(0, sum % 10);
+        sum /= 10;
+    }
+    if(sum != 0) {
+        result.add(0, sum);
+    }
+    int[] number = new int[result.size()];
+    for(int i = 0; i < number.length; i++) {
+        number[i] = result.get(i);
+    }
+    return number;
+}
+```
+
+### 问题：Add Binary
+
+题号：67
+
+```java
+public String addBinary(String a, String b) {
+    StringBuilder sb = new StringBuilder();
+    int c = 0;
+    int i = a.length() - 1;
+    int j = b.length() - 1;
+    while (i >= 0 && j >= 0) {
+        int sum = a.charAt(i) - '0' + b.charAt(j) - '0' + c;
+        c = sum / 2;
+        sb.insert(0, (char)('0' + sum % 2));
+        i--;
+        j--;
+    }
+    if (i >= 0) {
+        for (int k = i; k >= 0; k--) {
+            int sum = a.charAt(k) - '0' + c;
+            c = sum / 2;
+            sb.insert(0, (char)('0' + sum % 2));
+        }
+    }
+    if (j >= 0) {
+        for (int k = j; k >= 0; k--) {
+            int sum = b.charAt(k) - '0' + c;
+            c = sum / 2;
+            sb.insert(0, (char)('0' + sum % 2));
+        }
+    }
+    if (c == 1) sb.insert(0, '1');
+    return sb.toString();
+}
+```
+
+### 问题：Multiply Strings
+
+题号：43
+
+```txt
+Input: num1 = "2", num2 = "3"
+Output: "6"
+```
+
+[思路](https://leetcode.com/problems/multiply-strings/discuss/17605/Easiest-JAVA-Solution-with-Graph-Explanation)
+
+```java
+public String multiply(String num1, String num2) {
+    int m = num1.length(), n = num2.length();
+    int[] pos = new int[m + n];
+
+    for(int i = m - 1; i >= 0; i--) {
+        for(int j = n - 1; j >= 0; j--) {
+            int mul = (num1.charAt(i) - '0') * (num2.charAt(j) - '0');
+            int p1 = i + j, p2 = i + j + 1;
+            int sum = mul + pos[p2];
+
+            pos[p1] += sum / 10;
+            pos[p2] = (sum) % 10;
+        }
+    }  
+
+    StringBuilder sb = new StringBuilder();
+    for(int p : pos) if(!(sb.length() == 0 && p == 0)) sb.append(p);
+    return sb.length() == 0 ? "0" : sb.toString();
+}
+```
+
+### 问题：Pow(x, n)
+
+题号：50
+
+思路：对指数做移位，扩大底数
+
+```java
+public double myPow(double x, int n) {
+    boolean reverse = false;
+    if(n < 0) {
+        n = -n;
+        reverse = true;
+    }
+    double tmp = x;
+    double res = 1;
+    for(int i = 0; i < 32; i++) {
+        if((n & 1) == 1) res *= tmp;
+        n = n >> 1;
+        tmp = tmp * tmp;
+    }
+    return reverse ? 1.0 / res : res;
+}
+```
+
+## Tree
+
+### 问题：Binary Tree Preorder Traversal
+
+题号：144
+
+递归
+
+```java
+public List<Integer> preorderTraversal(TreeNode root) {
+    List<Integer> list = new ArrayList<>();
+    preOrder(list, root);
+    return list;
+}
+
+private void preOrder(List<Integer> list, TreeNode root) {
+    if (root == null) {
+        return;
+    }
+    list.add(root.val);
+    preOrder(list, root.left);
+    preOrder(list, root.right);
+}
+```
+
+非递归
+
+```java
+public List<Integer> preorderTraversal(TreeNode root) {
+    List<Integer> result = new ArrayList<>();
+    Deque<TreeNode> stack = new ArrayDeque<>();
+    TreeNode p = root;
+    while(!stack.isEmpty() || p != null) {
+        if(p != null) {
+            stack.push(p);
+            result.add(p.val);  // Add before going to children
+            p = p.left;
+        } else {
+            TreeNode node = stack.pop();
+            p = node.right;
+        }
+    }
+    return result;
+}
+```
+
+### 问题：Binary Tree Inorder Traversal
+
+题号：94
+
+递归：
+
+```java
+public List<Integer> inorderTraversal(TreeNode root) {
+    List<Integer> list = new ArrayList<>();
+    inOrder(list, root);
+    return list;
+}
+
+private void inOrder(List<Integer> list, TreeNode root) {
+    if (root == null) {
+        return;
+    }
+    inOrder(list, root.left);
+    list.add(root.val);
+    inOrder(list, root.right);
+}
+```
+
+非递归：
+
+```java
+public List<Integer> inorderTraversal(TreeNode root) {
+    List<Integer> result = new ArrayList<>();
+    Deque<TreeNode> stack = new ArrayDeque<>();
+    TreeNode p = root;
+    while(!stack.isEmpty() || p != null) {
+        if(p != null) {
+            stack.push(p);
+            p = p.left;
+        } else {
+            TreeNode node = stack.pop();
+            result.add(node.val);  // Add after all left children
+            p = node.right;
+        }
+    }
+    return result;
+}
+```
+
+### Binary Tree Postorder Traversal
+
+题号：145
+
+递归：
+
+```java
+public List<Integer> postorderTraversal(TreeNode root) {
+    List<Integer> list = new ArrayList<>();
+    postOrder(list, root);
+    return list;
+}
+
+private void postOrder(List<Integer> list, TreeNode root) {
+    if (root == null) {
+        return;
+    }
+    postOrder(list, root.left);
+    postOrder(list, root.right);
+    list.add(root.val);
+}
+```
+
+非递归：
+
+```java
+public List<Integer> postorderTraversal(TreeNode root) {
+    LinkedList<Integer> result = new LinkedList<>();
+    Deque<TreeNode> stack = new ArrayDeque<>();
+    TreeNode p = root;
+    while(!stack.isEmpty() || p != null) {
+        if(p != null) {
+            stack.push(p);
+            result.addFirst(p.val);  // Reverse the process of preorder
+            p = p.right;             // Reverse the process of preorder
+        } else {
+            TreeNode node = stack.pop();
+            p = node.left;           // Reverse the process of preorder
+        }
+    }
+    return result;
+}
+```
+
+### Binary Tree Level Order Traversal
+
+题号：102
+
+```java
+public List<List<Integer>> levelOrder(TreeNode root) {
+    List<List<Integer>> ans = new ArrayList<List<Integer>>();
+    Deque<TreeNode> deque = new ArrayDeque<>();
+    if (root == null) return ans;
+
+    deque.offerLast(root);
+    while (!deque.isEmpty()) {
+        int level = deque.size();
+        List<Integer> sublist = new ArrayList<>();
+        for (int i = 0; i < level; i++) {
+            if (deque.peekFirst().left != null) {
+                deque.offerLast(deque.getFirst().left);
+            }
+            if (deque.peekFirst().right != null) {
+                deque.offerLast(deque.getFirst().right);
+            }
+            sublist.add(deque.removeFirst().val);
+        }
+        ans.add(sublist);
+    }
+    return ans;
+}
+```
+
+### 问题：Same Tree - Symmetric Tree
+
+题号：100, 101
+
+```java
+public boolean isSameTree(TreeNode p, TreeNode q) {
+    if (p == null && q == null) return true;
+    if (p == null || q == null) return false;
+    return (isSameTree(p.left, q.left) && p.val == q.val && isSameTree(p.right, q.right));
+}
+```
+
+```java
+public boolean isSymmetric(TreeNode root) {
+    if (root == null) return true;
+    TreeNode p = root.left;
+    TreeNode q = root.right;
+    return isSymmetircImpl(p, q);
+}
+
+private boolean isSymmetircImpl(TreeNode left, TreeNode right) {
+    if (left == null && right == null) return true;
+    if (left == null || right == null) return false;
+    return isSymmetircImpl(left.left, right.right) && isSymmetircImpl(left.right, right.left) && left.val == right.val;
+}
+```
+
+非递归
+
+```java
+private boolean isSymmetric(TreeNode root){
+    if(root == null) return true;
+    Stack<TreeNode> stack = new Stack<TreeNode>();
+    stack.push(root.left);
+    stack.push(root.right);
+    TreeNode left, right;
+
+    while(!stack.empty()){
+        left = stack.pop();
+        right = stack.pop();
+
+        if(left == null && right == null){
+            continue;
+        }
+        if(left==null || right == null || left.val != right.val){
+            return false;
+        }
+        stack.push(left.left);
+        stack.push(right.right);
+        stack.push(left.right);
+        stack.push(right.left);
+    }
+    return true;
+}
+```
+
+### Invert Binary Tree
+
+题号：226
+
+递归：
+
+```java
+public TreeNode invertTree(TreeNode root) {
+    if (root == null) {
+        return null;
+    }
+    TreeNode right = invertTree(root.right);
+    TreeNode left = invertTree(root.left);
+    root.left = right;
+    root.right = left;
+    return root;
+}
+```
+
+非递归：
+
+```java
+public TreeNode invertTree(TreeNode root) {
+    if (root == null) return null;
+    Queue<TreeNode> queue = new LinkedList<TreeNode>();
+    queue.add(root);
+    while (!queue.isEmpty()) {
+        TreeNode current = queue.poll();
+        TreeNode temp = current.left;
+        current.left = current.right;
+        current.right = temp;
+        if (current.left != null) queue.add(current.left);
+        if (current.right != null) queue.add(current.right);
+    }
+    return root;
+}
+```
+
+### Path Sum I II
+
+题号：112, 113
+
+112:
+
+```java
+public boolean hasPathSum(TreeNode root, int sum) {
+    if (root == null) return false;
+    if (root.left == null && root.right == null && sum - root.val == 0) return true;
+    return hasPathSum(root.left, sum - root.val) || hasPathSum(root.right, sum - root.val);
+}
+```
+
+113:
+
+递归：
+
+```java
+public List<List<Integer>> pathSum(TreeNode root, int sum) {
+    List<List<Integer>> ans = new ArrayList<List<Integer>>();
+    pathSumImpl(root, ans, new ArrayList<>(), 0, sum);
+    return ans;
+}
+
+private void pathSumImpl(TreeNode root, List<List<Integer>> res, List<Integer> sublist, int sum, int target) {
+    if (root == null) {
+        return;
+    }
+    sublist.add(root.val);
+    sum += root.val;
+    if (root.left == null && root.right == null && sum == target) {
+        res.add(new ArrayList<>(sublist));
+    }
+    pathSumImpl(root.left, res, sublist, sum, target);
+    pathSumImpl(root.right, res, sublist, sum, target);
+    sublist.remove(sublist.size() - 1);
+}
+```
+
+### 问题：二叉树最小深度，最大深度
+
+题号：111，104
+
+递归：
+
+```java
+public int minDepth(TreeNode root) {
+    if(root == null) return 0;
+    int left = minDepth(root.left);
+    int right = minDepth(root.right);
+    return (left == 0 || right == 0) ? left + right + 1: Math.min(left,right) + 1;
+}
+```
+
+```java
+public int maxDepth(TreeNode root) {
+    if (root == null) return 0;
+    int left = maxDepth(root.left);
+    int right = maxDepth(root.right);
+    return Math.max(left, right) + 1;
+}
+```
+
+### 问题：Binary Tree Maximum Path Sum
+
+题号：124
+
+```java
+int max = Integer.MIN_VALUE;
+public int maxPathSum(TreeNode root) {
+    sumToFather(root);
+    return max;
+}
+
+private int sumToFather(TreeNode root) {
+    if (root == null) return 0;
+    int left = Math.max(0, sumToFather(root.left));
+    int right = Math.max(0, sumToFather(root.right));
+    max = Math.max(max, left + right + root.val);
+    return Math.max(left, right) + root.val;
+}
+```
+
+### 问题：Binary Tree Right Side View
+
+题号：199
+
+```java
+public List<Integer> rightSideView(TreeNode root) {
+        List<Integer> result = new ArrayList();
+        if(root == null)
+            return result;
+        Queue<TreeNode> que = new LinkedList();
+        que.add(root);
+        while(!que.isEmpty()){
+            int size = que.size();
+            while(size>0){
+                TreeNode node = que.poll();
+                // 只取每一层最后一个
+                if(size==1)
+                    result.add(node.val);
+                if(node.left != null)
+                    que.add(node.left);
+                if(node.right != null)
+                    que.add(node.right);
+                size--;
+            }
+        }
+        return result;
+    }
+```
+
+### 问题：Validate Binary Search Tree
+
+题号：98
+
+```java
+public boolean isValidBST(TreeNode root) {
+    return isValidBST(root, Long.MIN_VALUE, Long.MAX_VALUE);
+}
+
+private boolean isValidBST(TreeNode root, long minVal, long maxVal) {
+    if (root == null) return true;
+    if (root.val >= maxVal || root.val <= minVal) return false;
+    return isValidBST(root.left, minVal, root.val) && isValidBST(root.right, root.val, maxVal);
+}
+```
+
+### 问题：Convert Sorted Array/List to Binary Search Tree
+
+题号：108，109
+
+```java
+public TreeNode sortedArrayToBST(int[] nums) {
+    return buildTree(nums, 0, nums.length - 1);
+}
+
+private TreeNode buildTree(int[] nums, int low, int high) {
+    if (low > high)
+        return null;
+    int mid = (low + high) / 2;
+
+    TreeNode root = new TreeNode(nums[mid]);
+    root.left = buildTree(nums, low, mid - 1);
+    root.right = buildTree(nums, mid + 1, high);
+    return root;
+}
+```
+
+```java
+public TreeNode sortedListToBST(ListNode head) {
+    if (head == null) return null;
+    return toBST(head, null);
+}
+private TreeNode toBST(ListNode head, ListNode tail) {
+    ListNode slow = head;
+    ListNode fast = head;
+    if (head == tail) return null;
+
+    // 快指针指到链表尾部的时候，慢指针指到链表中部
+    while (fast != tail && fast.next != tail) {
+        fast = fast.next.next;
+        slow = slow.next;
+    }
+
+    TreeNode thead = new TreeNode(slow.val);
+    thead.left = toBST(head, slow);
+    thead.right = toBST(slow.next, tail);
+    return thead;
+}
+```
