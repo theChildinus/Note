@@ -1012,9 +1012,7 @@ Input: "cbacdcbc"
 Output: "acdb"
 ```
 
-思路：[连接](https://leetcode.com/problems/remove-duplicate-letters/discuss/76762/Java-O(n)-solution-using-stack-with-detail-explanation)
-
-
+思路：[链接](https://leetcode.com/problems/remove-duplicate-letters/discuss/76762/Java-O(n)-solution-using-stack-with-detail-explanation)
 
 ```java
 public String removeDuplicateLetters(String s) {
@@ -1092,7 +1090,7 @@ public int titleToNumber(String s) {
 ```
 
 ### 问题：Longest Palindromic Substring 最长回文
-
+Set
 题号：5
 
 思路：动态规划
@@ -1749,5 +1747,352 @@ private TreeNode toBST(ListNode head, ListNode tail) {
     thead.left = toBST(head, slow);
     thead.right = toBST(slow.next, tail);
     return thead;
+}
+```
+
+## BackTracking
+
+### 问题：Subsets I，II
+
+题号：78，90
+
+思路：回溯法，依次添加元素，在返回之前删除list尾部的元素
+
+回溯法的基本思想是按照输入数组的顺序，每一层递归处理一个元素，当处理到最后一层的时候，也就是把数组中的所有元素都处理完的时候，把当前结果加入到最后的返回结果中。值得注意的是，每次在递归到下一层之前，我们加入了某个要处理的元素X，在下一层递归返回之后，我们要把之前加入的元素X从当前结果中取出来。如果我们不把元素X取出来，那么在下一次循环中，我们还会加入新的元素Y。那么在这一层递归中就相当于处理了不止一个新元素。
+
+回溯法对输入队列是否要排序取决于：
+
+- 输出队列是否有序
+- 去重目的，将后续出现的同一数字的排列情况删去
+
+```java
+public List<List<Integer>> subsets(int[] nums) {
+    if (nums.length == 0) return new ArrayList<>();
+    List<List<Integer>> ans = new ArrayList<>();
+    Arrays.sort(nums);
+    backTrack(ans, new ArrayList<>(), nums, 0);
+    return ans;
+}
+
+private void backTrack(List<List<Integer>> list, List<Integer> tmplist, int[] nums, int start) {
+    list.add(new ArrayList<>(tmplist));
+    for (int i = start; i < nums.length; i++) {
+        tmplist.add(nums[i]);
+        backTrack(list, tmplist, nums, i + 1);
+        tmplist.remove(tmplist.size() - 1);
+    }
+}
+```
+
+90:
+
+```java
+public List<List<Integer>> subsetsWithDup(int[] nums) {
+    if (nums.length == 0) return new ArrayList<>();
+    List<List<Integer>> ans = new ArrayList<>();
+    Arrays.sort(nums);
+    subsetbackTrack(ans, new ArrayList<>(), nums, 0);
+    return ans;
+}
+
+private void subsetbackTrack(List<List<Integer>> list, List<Integer> tmplist, int[] nums, int start) {
+    list.add(new ArrayList<>(tmplist));
+
+    for (int i = start; i < nums.length; i++) {
+        //  如果后一个元素和之前的元素相同，则不再操作，避免重复
+        if (i > start && nums[i] == nums[i - 1]) continue;
+        tmplist.add(nums[i]);
+        subsetbackTrack(list, tmplist, nums, i + 1);
+        tmplist.remove(tmplist.size() - 1);
+    }
+}
+```
+
+问题：Combination Sum I II III IV
+
+题号：39，40，216，377
+
+39:
+
+```txt
+Input: candidates = [2,3,6,7], target = 7,
+A solution set is:
+[
+  [7],
+  [2,2,3]
+]
+```
+
+```java
+public List<List<Integer>> combinationSum(int[] nums, int target) {
+    List<List<Integer>> list = new ArrayList<>();
+    Arrays.sort(nums);
+    combineBackTrack1(list, new ArrayList<>(), nums, target, 0);
+    return list;
+}
+
+private void combineBackTrack1(List<List<Integer>> list, List<Integer> tempList, int [] nums, int remain, int start){
+    if(remain < 0) return;
+    else if(remain == 0) {
+        list.add(new ArrayList<>(tempList));
+        return;
+    }
+
+    for(int i = start; i < nums.length; i++){
+        tempList.add(nums[i]);
+        // not i + 1 because we can reuse same elements
+        combineBackTrack1(list, tempList, nums, remain - nums[i], i);
+        tempList.remove(tempList.size() - 1);
+    }
+}
+```
+
+40：
+
+```txt
+Input: candidates = [10,1,2,7,6,1,5], target = 8,
+A solution set is:
+[
+  [1, 7],
+  [1, 2, 5],
+  [2, 6],
+  [1, 1, 6]
+]
+```
+
+```java
+public List<List<Integer>> combinationSum2(int[] candidates, int target) {
+    if (candidates.length == 0) return new ArrayList<>();
+    int[] nums = candidates;
+    Arrays.sort(nums);
+    List<List<Integer>> ans = new ArrayList<>();
+    combineBackTrack2(ans, new ArrayList<>(), nums, 0, target);
+    return ans;
+}
+
+private void combineBackTrack2(List<List<Integer>> ans, List<Integer> tmplist, int[] nums, int start, int target) {
+    if (target == 0) {
+        ans.add(new ArrayList<>(tmplist));
+        return;
+    }
+    if (target < 0) return;
+
+    for (int i = start; i < nums.length; i++) {
+        if (i > start && nums[i] == nums[i - 1]) continue;
+        tmplist.add(nums[i]);
+        combineBackTrack2(ans, tmplist, nums, i + 1, target - nums[i]);
+        tmplist.remove(tmplist.size() - 1);
+    }
+}
+```
+
+216：
+
+```txt
+Input: k = 3, n = 9
+Output: [[1,2,6], [1,3,5], [2,3,4]]
+```
+
+```java
+public List<List<Integer>> combinationSum3(int k, int n) {
+    if (k == 0 || n == 0) return new ArrayList<>();
+    int[] nums = new int[9];
+    for (int i = 0; i < 9; i++) {
+        nums[i] = i + 1;
+    }
+    List<List<Integer>> ans = new ArrayList<>();
+    combineBackTrack3(ans, new ArrayList<>(), nums, 0, k, n);
+    return ans;
+}
+
+public void combineBackTrack3(List<List<Integer>> ans, List<Integer> tmplist, int[] nums, int start, int k, int n) {
+    if (tmplist.size() == k && n == 0) {
+        ans.add(new ArrayList<>(tmplist));
+        return;
+    }
+
+    for (int i = start; i < nums.length; i++) {
+        tmplist.add(nums[i]);
+        combineBackTrack3(ans, tmplist, nums, i + 1, k, n - nums[i]);
+        tmplist.remove(tmplist.size() - 1);
+    }
+}
+```
+
+377：
+
+```java
+
+```
+
+### 问题：Permutations 全排列 I II
+
+题号：46 47 31
+
+```java
+public List<List<Integer>> permute(int[] nums) {
+    if (nums.length == 0) return new ArrayList<>();
+    List<List<Integer>> ans = new ArrayList<>();
+    permuteBackTrack(ans, new ArrayList<>(), nums);
+    return ans;
+}
+
+private void permuteBackTrack(List<List<Integer>> ans, List<Integer> sublist, int[] nums) {
+    if (sublist.size() == nums.length) {
+        ans.add(new ArrayList<>(sublist));
+        return;
+    }
+    // i从0开始
+    for (int i = 0; i < nums.length; i++) {
+        if (sublist.contains(nums[i])) continue;
+        sublist.add(nums[i]);
+        permuteBackTrack(ans, sublist, nums);
+        sublist.remove(sublist.size() - 1);
+    }
+}
+```
+
+47: 有重复元素的全排列
+
+```java
+public List<List<Integer>> permuteUnique(int[] nums) {
+    List<List<Integer>> list = new ArrayList<>();
+    Arrays.sort(nums);
+    backtrack(list, new ArrayList<>(), nums, new boolean[nums.length]);
+    return list;
+}
+
+private void backtrack(List<List<Integer>> list, List<Integer> tempList, int [] nums, boolean [] used){
+    if(tempList.size() == nums.length){
+        list.add(new ArrayList<>(tempList));
+    } else{
+        for(int i = 0; i < nums.length; i++){
+            if(used[i] || i > 0 && nums[i] == nums[i-1] && !used[i - 1]) continue;
+            used[i] = true;
+            tempList.add(nums[i]);
+            backtrack(list, tempList, nums, used);
+            used[i] = false;
+            tempList.remove(tempList.size() - 1);
+        }
+    }
+}
+```
+
+31：求下一个全排列
+
+[参考讲解](https://blog.csdn.net/NoMasp/article/details/49913627)
+
+[演示](https://leetcode.com/problems/next-permutation/solution/)
+
+数学中的排列组合顺序：数值是依次增大的
+
+```txt
+1 2 3
+1 3 2
+2 1 3
+2 3 1
+3 1 2
+3 2 1
+```
+
+对于 `6 5 4 8 7 5 1` 的下一个排列应该是 `6 5 5 1 4 7 8`
+
+```java
+public void nextPermutation(int[] nums) {
+    int i = nums.length - 2;
+    while (i >= 0 && nums[i] >= nums[i + 1]) i--;
+    if (i >= 0) {
+        int j = nums.length - 1;
+        while (j >= 0 && nums[j] <= nums[i]) j--;
+        swap(nums, i, j);
+    }
+    reverse(nums, i + 1);
+}
+private void reverse(int[] nums, int start) {
+    int i = start;
+    int j = nums.length - 1;
+    while (i < j) {
+        swap(nums, i, j);
+        i++;
+        j--;
+    }
+}
+private void swap(int[] nums, int i, int j) {
+    int tmp = nums[i];
+    nums[i] = nums[j];
+    nums[j] = tmp;
+}
+```
+
+### 问题：Letter Combinations of a Phone Number
+
+题号：17
+
+暴力：
+
+```java
+public List<String> letterCombinations(String digits) {
+    if (digits.isEmpty()) return new ArrayList<String>();
+
+    List<String> ans = Letter2List(0, digits);
+    for (int i = 1; i < digits.length(); i++) {
+        List<String> next = Letter2List(i, digits);
+        List<String> tmp = combine(ans, next);
+        ans = tmp;
+    }
+    return ans;
+}
+
+private List<String> Letter2List(int key, String digits) {
+    List<String> phone = new ArrayList<>(Arrays.asList(" ", "", "abc", "def", "ghi", "jkl", "mno", "pqrs", "tuv", "wxyz"));
+    String s = phone.get(digits.charAt(key) - '0');
+    List<String> ret = new ArrayList<>();
+    for (int i = 0; i < s.length(); i++) {
+        ret.add(String.valueOf(s.charAt(i)));
+    }
+    return ret;
+}
+
+private List<String> combine(List<String> l1, List<String> l2) {
+    List<String> ret = new ArrayList<>();
+    for (String ll1 : l1) {
+        for (String ll2 : l2) {
+            String tmp = ll1 + ll2;
+            ret.add(tmp);
+        }
+    }
+    return ret;
+}
+```
+
+回溯：
+
+```java
+public List<String> letterCombinations(String digits) {
+    //把table上的数字对应的字母列出来，当输入为2是，digits[2]就是2所对应的"abc"
+    String[] table = new String[]{"","","abc","def","ghi","jkl","mno","pqrs","tuv","wxyz"};
+    List<String> list = new ArrayList<String>();
+    //index从0开始，即digits的第一个数字
+    letterCombinations(list, digits, "", 0, table);
+    return list;
+}
+
+// digits中每个数字为一层
+
+private void letterCombinations (List<String> list, String digits, String curr, int index, String[] table) {
+    //最后一层退出条件
+    if (index == digits.length()) {
+        if(curr.length() != 0) list.add(curr);
+        return;
+    }
+
+    //找到数字对应的字符串
+    String temp = table[digits.charAt(index) - '0'];
+    for (int i = 0; i < temp.length(); i++) {
+        //每次循环把不同字符串加到当前curr之后
+        String next = curr + temp.charAt(i);
+        //进入下一层
+        letterCombinations(list,digits,next,index+1,table);
+    }
 }
 ```
