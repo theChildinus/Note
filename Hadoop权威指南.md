@@ -3797,6 +3797,558 @@ Spark提供了两种部署模式：YARN客户端模式和YARN集群模式，前�
 
 ## 第20章 关于HBase
 
+[HBase深入浅出](https://www.ibm.com/developerworks/cn/analytics/library/ba-cn-bigdata-hbase/index.html)
 
+`Hadoop HDFS为HBase提供了高可靠性的底层存储支持，Hadoop MapReduce为HBase提供了高性能的计算能力，Zookeeper为HBase提供了稳定服务和failover机制。Pig和Hive还为HBase提供了高层语言支持，使得在HBase上进行数据统计处理变的非常简单。 Sqoop则为HBase提供了方便的RDBMS（关系型数据库）数据导入功能，使得传统数据库数据向HBase中迁移变的非常方便。`
+
+### 概念
+
+HBase是Hadoop上面向列的分布式数据库，如果需要实时地随机访问超大规模数据集就可以使用HBase
+
+HBase并不是关系型数据库，它不支持SQL
+
+HBase的一个典型应用是webtable，一个以网页URL为主键的表，其中包含爬取的页面和页面属性
+
+单元格是有版本的，默认情况下版本号是自动分配的，为HBase插入单元格的时间戳，单元格的内容是未解释的字节数组
+
+表中行的键也是字节数组，所以理论上任何东西都可以通过表示成字符串或者将二进制形式转换为长整型，或直接对数据结构进行序列化，来作为键值。表中的行根据行的键值进行排序，排序根据字节序进行，所有对表的访问都要通过表的主键
+
+![datamodel](image/datamodel.png)
+
+同一列族的所有成员具有相同的前缀，列族必须作为表模式定义的一部分预先给出，HBase更准确的说法是面向列族的存储器，所以最好使所有列族成员都有相同的访问模式和大小特征
+
+HBase自动把表水平划分成区域，每个区域由表中行的子集构成
+
+区域 是在HBase集群上分布数据的最小单位，其中每个节点都负责管理表所有区域的一个子集
+
+加锁 无论对行进行访问的事务牵涉多少列，对行的更新都是原子的
+
+如HBase和YARN是由客户端，从属机(slave)和协调主控机(master)组成的，HBase也采用相同的模型，它用一个master节点协调管理一个或者多个regionserver，regionserver负责零个或者多个区域的管理以及响应客户端的读写请求
+
+![hbasecluster](image/hbasecluster.png)
+
+HBase依赖于ZooKeeper，它管理一个ZooKeeper实例作为集群的权威机构(authority)
+
+运行中的HBase
+
+HBase内部保留名为`habse:meta`的特殊目录表，它们维护者当前集群上所有区域的列表，状态和位置。hbase:meta表中的项使用区域名作为键，区域名由所属的表名、区域的起始行、区域的创建时间以及对其整体进行的MD5hash值组成
+
+表TestTable中起始行 为xyz的区域的名称如下：
+
+`TestTable,xyz,1279729913622.1b6e176fb8d8aa88fd4ab6bc80247ece`
+
+新连接到ZooKeeper集群上的客户端首先查找hbase:meta的位置，然后客户端通过查找合适的hbase:meta区域来获取用户空间区域所在节点及其位置，接着客户端既可以直接和管理那个区域的regionserver进行交互了
+
+### 客户端
+
+和HBase集群进行交互有很多种不同的客户端可供选择
+
+#### JAVA
+
+```java
+import java.io.IOException;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.*;
+import org.apache.hadoop.hbase.client.*;
+import org.apache.hadoop.hbase.util.Bytes;
+
+public class ExampleClient {
+
+    public static void main(String[] args) throws IOException {
+        Configuration config = HBaseConfiguration.create();
+        Connection connection = ConnectionFactory.createConnection(config);
+
+        try {
+            // 创建一个Admin实例，然后让它来创建名为test且只有一个列族data的表
+            Admin admin = connection.getAdmin();
+            try {
+                TableName tableName = TableName.valueOf("test");
+                HTableDescriptor htd = new HTableDescriptor(tableName);
+                HColumnDescriptor hcd = new HColumnDescriptor("data");
+                htd.addFamily(hcd);
+                admin.createTable(htd);
+                HTableDescriptor[] tables = admin.listTables();
+                if (tables.length != 1 &&
+                        Bytes.equals(tableName.getName(), tables[0].getTableName().getName())) {
+                    throw new IOException("failed create of table");
+                }
+
+                Table table = connection.getTable(tableName);
+
+                try {
+                    for (int i = 1; i <= 3; i++) {
+                        byte[] row = Bytes.toBytes("row" + i);
+                        Put put = new Put(row);
+                        byte[] columnFamily = Bytes.toBytes("data");
+                        byte[] qualifier = Bytes.toBytes(String.valueOf(i));
+                        byte[] value = Bytes.toBytes("value" + i);
+                        put.addColumn(columnFamily, qualifier, value);
+                        table.put(put);
+                    }
+                    // 获取和打印刚添加的第一行，然后再使用Scan对象来扫描新建的表，并打印扫描结果
+                    Get get = new Get(Bytes.toBytes("row1"));
+                    Result result = table.get(get);
+                    System.out.println("get: " + result);
+                    // 扫描器按次序返回数据行，用户使用已设置的Scan对象实例作为scan参数调用getScanner，以此来获取HBase中一个表上的扫描器
+                    Scan scan = new Scan();
+                    ResultScanner scanner = table.getScanner(scan);
+                    try {
+                        for (Result scannerResult : scanner) {
+                            System.out.println("Scan: " + scannerResult);
+                        }
+                    } finally {
+                        scanner.close();
+                    }
+                    admin.disableTable(tableName);
+                    admin.deleteTable(tableName);
+                } finally {
+                    table.close();
+                }
+            } finally {
+                admin.close();
+            }
+        } finally {
+            connection.close();
+        }
+    }
+
+}
+```
+
+#### MapReduce
+
+```java
+import org.apache.hadoop.conf.Configured;
+import org.apache.hadoop.hbase.HBaseConfiguration;
+import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.filter.FirstKeyOnlyFilter;
+import org.apache.hadoop.hbase.io.ImmutableBytesWritable;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.lib.output.NullOutputFormat;
+import org.apache.hadoop.util.Tool;
+import org.apache.hadoop.util.ToolRunner;
+
+public class SimpleRowCounter extends Configured implements Tool {
+
+    static class RowCounterMapper extends TableMapper<ImmutableBytesWritable, Result> {
+        public static enum Counter { ROWS }
+
+        public void map(ImmutableBytesWritable row, Result value, Mapper.Context context) {
+            context.getCounter(Counter.ROWS).increment(1);
+        }
+    }
+
+    public int run(String[] args) throws Exception {
+        if (args.length != 1) {
+            System.out.println("Usage: SimpleRowCounter <tablename>");
+            return -1;
+        }
+
+        String tableName = args[0];
+        Scan scan = new Scan();
+        scan.setFilter(new FirstKeyOnlyFilter());
+        Job job = new Job(getConf(), getClass().getSimpleName());
+        job.setJarByClass(getClass());
+        TableMapReduceUtil.initTableMapperJob(tableName, scan, RowCounterMapper.class,
+                ImmutableBytesWritable.class, Result.class, job);
+        job.setNumReduceTasks(0);
+        job.setOutputFormatClass(NullOutputFormat.class);
+        return job.waitForCompletion(true) ? 0 : 1;
+    }
+
+    public static void main(String[] args) throws Exception {
+        int exitCode = ToolRunner.run(HBaseConfiguration.create(), new SimpleRowCounter(), args);
+        System.exit(exitCode);
+    }
+}
+```
+
+### 创建在线查询应用
+
+虽然HDFS和MapReduce是用于对大数据集进行批处理的强大工具，但对于读写单独的记录效率很低，HBase来填补它们之间的鸿沟
+
+假设
+
+- 气温数据更新到达的速度很快
+- 在线应用必须能够及时显示观测数据
+
+#### 模式设计
+
+- stations表
+  - 观测站数据，行的键是stationid，列族info，它能够作为键值字典来支持对观测站信息的查找，字典的键就是列名，info:name, info:location, info:description
+- observations表
+  - 这个表存放气温观测数据，行的键是stationid和逆序时间戳构成的组合键，这个表有一个列族data，它包含一列airtemp为观测值
+
+在stations表中，显然选择stationid作为键，因为我们总是根据特定站点的ID来访问观测站的信息，在observations表使用的是一个组合键（把观测时间戳放在键之后），这样同一个站的观测数据会被分组放在一起，使用逆序时间戳的二进制存储，系统把每个观测站观测数据中最新的数据存储在最前面
+
+#### 加载数据
+
+观测站的数量相对较少，所以我们可以使用任何一种接口来插入这些观测站的静态数据
+
+加载站点信息
+
+```java
+import java.io.File;
+import java.io.IOException;
+import java.util.Map;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.conf.Configured;
+import org.apache.hadoop.hbase.HBaseConfiguration;
+import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.Connection;
+import org.apache.hadoop.hbase.client.ConnectionFactory;
+import org.apache.hadoop.hbase.client.Put;
+import org.apache.hadoop.hbase.client.Table;
+import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.util.Tool;
+import org.apache.hadoop.util.ToolRunner;
+
+/**
+ * HBase 1.0 version of HBaseStationImporter that uses {@code Connection},
+ * and {@code Table}.
+ */
+public class NewHBaseStationImporter extends Configured implements Tool {
+
+    public int run(String[] args) throws IOException {
+        if (args.length != 1) {
+            System.err.println("Usage: HBaseStationImporter <input>");
+            return -1;
+        }
+
+        Configuration config = HBaseConfiguration.create();
+        Connection connection = ConnectionFactory.createConnection(config);
+        try {
+            // Create table
+            TableName tableName = TableName.valueOf("stations");
+            Table table = connection.getTable(tableName);
+            try {
+                NcdcStationMetadata metadata = new NcdcStationMetadata();
+                metadata.initialize(new File(args[0]));
+                Map<String, String> stationIdToNameMap = metadata.getStationIdToNameMap();
+
+                for (Map.Entry<String, String> entry : stationIdToNameMap.entrySet()) {
+                    Put put = new Put(Bytes.toBytes(entry.getKey()));
+                    put.addColumn(NewHBaseStationQuery.INFO_COLUMNFAMILY,
+                            NewHBaseStationQuery.NAME_QUALIFIER, Bytes.toBytes(entry.getValue()));
+                    put.addColumn(NewHBaseStationQuery.INFO_COLUMNFAMILY,
+                            NewHBaseStationQuery.DESCRIPTION_QUALIFIER, Bytes.toBytes("(unknown)"));
+                    put.addColumn(NewHBaseStationQuery.INFO_COLUMNFAMILY,
+                            NewHBaseStationQuery.LOCATION_QUALIFIER, Bytes.toBytes("(unknown)"));
+                    table.put(put);
+                }
+            } finally {
+                table.close();
+            }
+        } finally {
+            connection.close();
+        }
+        return 0;
+    }
+
+    public static void main(String[] args) throws Exception {
+        int exitCode = ToolRunner.run(HBaseConfiguration.create(),
+                new NewHBaseStationImporter(), args);
+        System.exit(exitCode);
+    }
+}
+```
+
+从HDFS向HBase表导入气温数据的MapReduce应用
+
+```java
+import java.io.IOException;
+import org.apache.hadoop.conf.Configured;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hbase.HBaseConfiguration;
+import org.apache.hadoop.hbase.client.Put;
+import org.apache.hadoop.hbase.mapreduce.TableOutputFormat;
+import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.util.Tool;
+import org.apache.hadoop.util.ToolRunner;
+
+/**
+ * Uses HBase's {@link TableOutputFormat} to load temperature data into a HBase table.
+ */
+public class HBaseTemperatureImporter extends Configured implements Tool {
+
+    static class HBaseTemperatureMapper<K> extends Mapper<LongWritable, Text, K, Put> {
+        private NcdcRecordParser parser = new NcdcRecordParser();
+
+        @Override
+        public void map(LongWritable key, Text value, Context context) throws
+                IOException, InterruptedException {
+            parser.parse(value.toString());
+            if (parser.isValidTemperature()) {
+                byte[] rowKey = RowKeyConverter.makeObservationRowKey(parser.getStationId(),
+                        parser.getObservationDate().getTime());
+                Put p = new Put(rowKey);
+                p.addColumn(NewHBaseTemperatureQuery.DATA_COLUMNFAMILY,
+                        NewHBaseTemperatureQuery.AIRTEMP_QUALIFIER,
+                        Bytes.toBytes(parser.getAirTemperature()));
+                context.write(null, p);
+            }
+        }
+    }
+
+    @Override
+    public int run(String[] args) throws Exception {
+        if (args.length != 1) {
+            System.err.println("Usage: HBaseTemperatureImporter <input>");
+            return -1;
+        }
+        Job job = new Job(getConf(), getClass().getSimpleName());
+        job.setJarByClass(getClass());
+        FileInputFormat.addInputPath(job, new Path(args[0]));
+        job.getConfiguration().set(TableOutputFormat.OUTPUT_TABLE, "observations");
+        job.setMapperClass(HBaseTemperatureMapper.class);
+        job.setNumReduceTasks(0);
+        job.setOutputFormatClass(TableOutputFormat.class);
+        return job.waitForCompletion(true) ? 0 : 1;
+    }
+
+    public static void main(String[] args) throws Exception {
+        int exitCode = ToolRunner.run(HBaseConfiguration.create(),
+                new HBaseTemperatureImporter(), args);
+        System.exit(exitCode);
+    }
+}
+```
+
+##### 1. 加载的分布
+
+注意数据导入引发的步调一致问题，这时所有客户端都对同一个表的区域（在单个节点上）进行操作，然后再对下一个区域进行操作，这时加载操作并没有均匀得分布在所有区域上，和通常是由排序后输入(sorted input)和切分(split)的原理共同导致的，如果在插入数据前针对行键按数据排列的次序进行随机处理，可能有助于减少这种情况
+
+如果一个表是新的，一开始它只有一个区域，此时所有的更新都会加载到这个区域上，知道区域分裂为止，即使数据行的键是随机分布的，我们也无法避免这种情况
+
+##### 2. 批量加载
+
+HBase有一个高效的批量加载工具，它从MapReduce把以内部格式表示的数据直接写入文件系统，从而批量加载，顺着这条思路HBase实例的速度比用HBase客户端API写入数据的方式至少快了一个数量级
+
+批量加载分为两步，第一步使用HFileOutPutFormat2通过一个MapReduce作业将HFiles写入HDFS，第二步涉及将HFiles从HDFS移入现有的HBase表中，这张表在此过程中可能是活跃的
+
+#### 在线查询
+
+##### 观测站信息查询
+
+```java
+import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.conf.Configured;
+import org.apache.hadoop.hbase.HBaseConfiguration;
+import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.Connection;
+import org.apache.hadoop.hbase.client.ConnectionFactory;
+import org.apache.hadoop.hbase.client.Get;
+import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.client.Table;
+import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.util.Tool;
+import org.apache.hadoop.util.ToolRunner;
+
+/**
+ * HBase 1.0 version of HBaseStationQuery that uses {@code Connection},
+ * and {@code Table}.
+ */
+public class NewHBaseStationQuery extends Configured implements Tool {
+    static final byte[] INFO_COLUMNFAMILY = Bytes.toBytes("info");
+    static final byte[] NAME_QUALIFIER = Bytes.toBytes("name");
+    static final byte[] LOCATION_QUALIFIER = Bytes.toBytes("location");
+    static final byte[] DESCRIPTION_QUALIFIER = Bytes.toBytes("description");
+
+    // getStationInfo 接收一个Table实例和一个观测站ID，为了获取观测站的信息，我们使用table.get() 来传递一个Get实例，它被设置为用来获取已定义列族中由观测站ID所指明的列的值
+    public Map<String, String> getStationInfo(Table table, String stationId)
+            throws IOException {
+        Get get = new Get(Bytes.toBytes(stationId));
+        get.addFamily(INFO_COLUMNFAMILY);
+        Result res = table.get(get);
+        if (res == null) {
+            return null;
+        }
+        Map<String, String> resultMap = new LinkedHashMap<String, String>();
+        resultMap.put("name", getValue(res, INFO_COLUMNFAMILY, NAME_QUALIFIER));
+        resultMap.put("location", getValue(res, INFO_COLUMNFAMILY,
+                LOCATION_QUALIFIER));
+        resultMap.put("description", getValue(res, INFO_COLUMNFAMILY,
+                DESCRIPTION_QUALIFIER));
+        return resultMap;
+    }
+
+    private static String getValue(Result res, byte[] cf, byte[] qualifier) {
+        byte[] value = res.getValue(cf, qualifier);
+        return value == null? "": Bytes.toString(value);
+    }
+
+    public int run(String[] args) throws IOException {
+        if (args.length != 1) {
+            System.err.println("Usage: HBaseStationQuery <station_id>");
+            return -1;
+        }
+
+        Configuration config = HBaseConfiguration.create();
+        Connection connection = ConnectionFactory.createConnection(config);
+        try {
+            TableName tableName = TableName.valueOf("stations");
+            Table table = connection.getTable(tableName);
+            try {
+                Map<String, String> stationInfo = getStationInfo(table, args[0]);
+                if (stationInfo == null) {
+                    System.err.printf("Station ID %s not found.\n", args[0]);
+                    return -1;
+                }
+                for (Map.Entry<String, String> station : stationInfo.entrySet()) {
+                    System.out.printf("%s\t%s\n", station.getKey(), station.getValue());
+                }
+                return 0;
+            } finally {
+                table.close();
+            }
+        } finally {
+            connection.close();
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        int exitCode = ToolRunner.run(HBaseConfiguration.create(),
+                new NewHBaseStationQuery(), args);
+        System.exit(exitCode);
+    }
+}
+```
+
+##### 2.观测数据查询
+
+对observations表的查询需要输入的参数包括站点ID，开始时间以及要返回的最大行数，由于数据行是按观测时间逆序存储的，因此查询将返回发生在开始时间之后的观测值
+
+```java
+import java.io.IOException;
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.TreeMap;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.conf.Configured;
+import org.apache.hadoop.hbase.HBaseConfiguration;
+import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.Connection;
+import org.apache.hadoop.hbase.client.ConnectionFactory;
+import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.client.ResultScanner;
+import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.client.Table;
+import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.util.Tool;
+import org.apache.hadoop.util.ToolRunner;
+
+/**
+ * HBase 1.0 version of HBaseTemperatureQuery that uses {@code Connection},
+ * and {@code Table}.
+ */
+public class NewHBaseTemperatureQuery extends Configured implements Tool {
+  static final byte[] DATA_COLUMNFAMILY = Bytes.toBytes("data");
+  static final byte[] AIRTEMP_QUALIFIER = Bytes.toBytes("airtemp");
+  
+  public NavigableMap<Long, Integer> getStationObservations(Table table,
+      String stationId, long maxStamp, int maxCount) throws IOException {
+    byte[] startRow = RowKeyConverter.makeObservationRowKey(stationId, maxStamp);
+    NavigableMap<Long, Integer> resultMap = new TreeMap<Long, Integer>();
+    Scan scan = new Scan(startRow);
+    scan.addColumn(DATA_COLUMNFAMILY, AIRTEMP_QUALIFIER);
+    ResultScanner scanner = table.getScanner(scan);
+    try {
+      Result res;
+      int count = 0;
+      while ((res = scanner.next()) != null && count++ < maxCount) {
+        byte[] row = res.getRow();
+        byte[] value = res.getValue(DATA_COLUMNFAMILY, AIRTEMP_QUALIFIER);
+        Long stamp = Long.MAX_VALUE -
+          Bytes.toLong(row, row.length - Bytes.SIZEOF_LONG, Bytes.SIZEOF_LONG);
+        Integer temp = Bytes.toInt(value);
+        resultMap.put(stamp, temp);
+      }
+    } finally {
+      scanner.close();
+    }
+    return resultMap;
+  }
+    // run() 方法调用getStationObservations以请求最近10个观测值，并通过调用descendingMap使返回值仍然回归到降序
+  public int run(String[] args) throws IOException {
+    if (args.length != 1) {
+      System.err.println("Usage: HBaseTemperatureQuery <station_id>");
+      return -1;
+    }
+
+    Configuration config = HBaseConfiguration.create();
+    Connection connection = ConnectionFactory.createConnection(config);
+    try {
+      TableName tableName = TableName.valueOf("observations");
+      Table table = connection.getTable(tableName);
+      try {
+        NavigableMap<Long, Integer> observations =
+            getStationObservations(table, args[0], Long.MAX_VALUE, 10).descendingMap();
+        for (Map.Entry<Long, Integer> observation : observations.entrySet()) {
+          // Print the date, time, and temperature
+          System.out.printf("%1$tF %1$tR\t%2$s\n", observation.getKey(),
+              observation.getValue());
+        }
+        return 0;
+      } finally {
+        table.close();
+      }
+    } finally {
+      connection.close();
+    }
+  }
+
+  public static void main(String[] args) throws Exception {
+    int exitCode = ToolRunner.run(HBaseConfiguration.create(),
+        new NewHBaseTemperatureQuery(), args);
+    System.exit(exitCode);
+  }
+}
+```
+
+### HBase 和 RDBMS 的比较
+
+HBase是一个分布式的面向列的数据存储系统，表的模式是物理存储的直接反映，是系统有可能提供高效的数据结构的序列化、存储和检索
+
+RDBMS强调事务的强一致性，参照完整性，数据抽象与物理存储层相对独立，如果要在数据规模和并发读写这两方面中的任何一个上进行大规模向上拓展，就会很快发现RDBMS的易用性会让你损失不少性能
+
+#### 成功的服务
+
+成功的服务从小到大的生长过程
+
+1. 服务首次提供公开访问
+2. 服务越来越受欢迎，数据库收到太多的读请求
+3. 对服务的使用继续增加，数据库收到太多的写请求
+4. 新的特性增加了查询的复杂度，包含很多连接操作
+5. 服务被广泛使用，所有服务都变得非常慢
+6. 有些查询仍然太慢
+7. 读性能尚可，但写仍然越来越慢
+
+#### HBase
+
+- 没有真正的索引
+- 自动分区
+- 线性扩展和对于新节点的自动处理
+- 普通商用硬件支持
+- 容错
+- 批处理
+
+### Praxis
+
+- 在MapReduce中，首先打开HDFS文件，然后map任务处理文件的内容，最后关闭文件
+- 在HBase中，数据文件在启动时就被打开，并在处理过程中始终保持打开状态，所以HBase会遇到MapReduce客户端不常碰到的问题
+
+1. 文件描述符用完
+2. datanode上的线程用完
 
 ## 第21章 关于ZooKeeper
