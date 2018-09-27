@@ -649,11 +649,11 @@ Spark采用在集群上启动固定数量的执行器，MapReduce则分两步走
 
 MapReduce 1 和 YARN在组成上的比较，YARN的很多设计是为了解决MapReduce 1的局限性
 
-MapReduce 1 | YARN
---- | ---
-Jobtracker | 资源管理器、application master、时间轴服务器
-Tasktracker | 节点管理器
-Slot | 容器
+| MapReduce 1 | YARN                                         |
+| ----------- | -------------------------------------------- |
+| Jobtracker  | 资源管理器、application master、时间轴服务器 |
+| Tasktracker | 节点管理器                                   |
+| Slot        | 容器                                         |
 
 使用YARN的好处包括
 
@@ -1653,11 +1653,11 @@ MapReduce 作业ID由 YARN 资源管理器创建的 YARN 应用ID生成
 
 一个应用ID的格式包含两部分：资源管理器开始时间和唯一标识此应用的由资源管理器维护的增量计数器
 
-ID | 含义
---- | ---
-application_1410450250506_0003 | 资源管理器上的第三个应用
-job_1410450250506_0003 | 对应的作业ID
-task_14104050250506_0003_m_000003 | 任务属于作业，对应作业的第四个map任务，任务ID的顺序不必是任务执行的顺序
+| ID                                | 含义                                                                    |
+| --------------------------------- | ----------------------------------------------------------------------- |
+| application_1410450250506_0003    | 资源管理器上的第三个应用                                                |
+| job_1410450250506_0003            | 对应的作业ID                                                            |
+| task_14104050250506_0003_m_000003 | 任务属于作业，对应作业的第四个map任务，任务ID的顺序不必是任务执行的顺序 |
 
 访问 resource-manager-host
 
@@ -3801,6 +3801,10 @@ Spark提供了两种部署模式：YARN客户端模式和YARN集群模式，前�
 
 `Hadoop HDFS为HBase提供了高可靠性的底层存储支持，Hadoop MapReduce为HBase提供了高性能的计算能力，Zookeeper为HBase提供了稳定服务和failover机制。Pig和Hive还为HBase提供了高层语言支持，使得在HBase上进行数据统计处理变的非常简单。 Sqoop则为HBase提供了方便的RDBMS（关系型数据库）数据导入功能，使得传统数据库数据向HBase中迁移变的非常方便。`
 
+- HBase版本1.4.7
+- Hadoop版本2.9.1
+- HBase最新版本2.1.0 会出现HMaster线程无法启动的问题
+
 ### 概念
 
 HBase是Hadoop上面向列的分布式数据库，如果需要实时地随机访问超大规模数据集就可以使用HBase
@@ -4352,3 +4356,629 @@ RDBMS强调事务的强一致性，参照完整性，数据抽象与物理存储
 2. datanode上的线程用完
 
 ## 第21章 关于ZooKeeper
+
+Zookeeper是Hadoop的分布式协调服务，写分布式应用的主要困难在于会出现部分失败(partial failure)
+
+- 发送者不知道接受者是否收到消息
+- 接受者可能在网络错误之前收到，也可能没收到，也可能死掉
+- 发送者唯一能做的就是重新连接接受者
+  
+Zookeeper特点：
+
+- 简单的：Zookeeper核心是一个精简的文件系统，它提供一些简单的操作和一些额外的操作
+- 富有表现力的：Zookeeper的基本操作是一组丰富的构件，可用于实现多种协调数据结构和协议，例如：分布式队列，分布式锁
+- 高可用性：运行在一组机器上
+- 松耦合交互方式：在Zookeeper支持的交互过程中，参与者不需要彼此了解
+- Zookeeper是一个资源库：Zookeeper提供了一个通用协调模式实现方法的开源共享库
+
+### 示例
+
+`假设一组服务器用于为客户端提供某种服务，我们希望每个客户端都能够找到其中一台服务器，在这个例子中一个挑战就是如何维护这组服务器的成员列表`
+
+我们所描述的不是一个被动的分布式数据结构，而是一个主动的，能够在某个外部事件发生时修改数据项状态的数据结构
+
+### Zookeeper中的组成员关系
+
+#### 创建组
+
+将Zookeeper看作一个具有高可能性特性的文件系统，这个文件系统中没有目录和文件，而是统一使用节点的概念，称为znode
+
+```java
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.WatchedEvent;
+import org.apache.zookeeper.Watcher;
+import org.apache.zookeeper.ZooKeeper;
+import org.apache.zookeeper.ZooDefs.Ids;
+import org.apache.zookeeper.Watcher.Event.KeeperState;
+
+import java.io.IOException;
+import java.util.concurrent.CountDownLatch;
+
+public class CreateGroup implements Watcher {
+    private static final int SESSION_TIMEOUT = 5000;
+
+    private ZooKeeper zk;
+    private CountDownLatch connectedSignal = new CountDownLatch(1);
+
+    public void connect(String host) throws IOException, InterruptedException {
+        // 实例化一个新的Zookeeper类的对象，这个类是客户端API的主要类，用于维护客户端可Zookeeper服务之间的连接
+        // 第三个是Watcher对象的实例，Watcher对象接收来自ZooKeeper的回调，以获取各种事件的通知
+        zk = new ZooKeeper(host, SESSION_TIMEOUT, this);
+        connectedSignal.await();
+    }
+
+    // 当客户端已经与ZooKeeper服务建立连接后，Watcher的process方法会被调用，
+    @Override
+    public void process(WatchedEvent event) {
+        if (event.getState() == KeeperState.SyncConnected) {
+            connectedSignal.countDown();
+        }
+    }
+
+    public void create(String groupName) throws KeeperException, InterruptedException {
+        String path = "/" + groupName;
+        // 参数为：路径，znode的内容，访问控制列表，创建znode的类型
+        String createPath = zk.create(path, null/*data*/, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+        System.out.println("Created " + createPath);
+    }
+
+    public void close() throws InterruptedException {
+        zk.close();
+    }
+
+    public static void main(String[] args) throws Exception {
+        CreateGroup createGroup = new CreateGroup();
+        createGroup.connect(args[0]);
+        createGroup.create(args[1]);
+        createGroup.close();
+    }
+}
+```
+
+有两种类型的znode短暂的和持久的
+
+- 短暂znode 无论客户端是明确断开还是因为任何原因断开而终止，该节点都会被ZooKeeper服务删除
+- 持久znode 不会被删除
+
+#### 加入组
+
+每个组成员将作为一个程序运行，并且加入到组中，当程序退出时，这个组成员应当从组中删除
+
+```java
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.ZooDefs;
+
+import java.io.IOException;
+
+public class JoinGroup extends ConnectionWatcher {
+
+    public void join(String groupName, String memberName) throws KeeperException, InterruptedException {
+        String path = "/" + groupName + "/" + memberName;
+        String createdPath = zk.create(path, null/*data*/, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+        System.out.println("Created " + createdPath);
+    }
+
+    public static void main(String[] args) throws Exception {
+        JoinGroup joinGroup = new JoinGroup();
+        joinGroup.connect(args[0]);
+        joinGroup.join(args[1], args[2]);
+    }
+}
+```
+
+#### 列出组成员
+
+```java
+import org.apache.zookeeper.KeeperException;
+
+import java.util.List;
+
+public class ListGroup extends ConnectionWatcher {
+
+    public void list(String groupName) throws KeeperException, InterruptedException {
+        String path = "/" + groupName;
+
+        try {
+            // 观察标志，一点该znode的状态改变，关联的Watcher就会被触发，通过设置Watcher可以让应用程序接受到组成员加入，退出和组被删除的有关通知
+            List<String> children = zk.getChildren(path, false);
+            if (children.isEmpty()) {
+                System.out.printf("No members is group %s\n", groupName);
+                System.exit(1);
+            }
+
+            for (String child : children) {
+                System.out.println(child);
+            }
+            // 组的znode不存在抛出异常
+        } catch (KeeperException.NoNodeException e) {
+            System.out.printf("Group %s does not exist\n", groupName);
+            System.exit(1);
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        ListGroup listGroup = new ListGroup();
+        listGroup.connect(args[0]);
+        listGroup.list(args[1]);
+        listGroup.close();
+    }
+}
+```
+
+#### 删除组
+
+Zookeeper不支持递归的删除操作，因此删除父节点之前必须先删除子节点
+
+```java
+import org.apache.zookeeper.KeeperException;
+
+import java.util.List;
+
+public class DeleteGroup extends ConnectionWatcher {
+    public void delete(String groupName) throws KeeperException, InterruptedException {
+        String path = "/" + groupName;
+        try {
+            List<String> children = zk.getChildren(path, false);
+            for (String child : children) {
+                zk.delete(path + "/" + child, -1);
+            }
+            zk.delete(path, -1);
+        } catch (KeeperException.NoNodeException e) {
+            System.out.printf("Group %s does not exist\n", groupName);
+            System.exit(1);
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        DeleteGroup deleteGroup = new DeleteGroup();
+        deleteGroup.connect(args[0]);
+        deleteGroup.delete(args[1]);
+        deleteGroup.close();
+    }
+}
+```
+
+**组成员关系管理并不能解决与节点通信过程中出现的网络问题**
+
+### ZooKeeper服务
+
+ZooKeeper是一个高可用性的高性能协调服务，我们从三个方面了解这个服务
+
+- 模型
+- 操作
+- 实现
+
+#### 数据模型
+
+ZooKeeper维护一个树形层次结构，树中的节点被称为znode，znode可以用于存储数据，并且有一个与之关联的ACL，ZooKeeper被设计用来实现协调服务，而不是用于大容量数据存储，因此一个znode能存储的数据被限在1MB以内
+
+ZooKeeper的数据访问具有原子性
+
+- 读操作要么读到所有数据，要么读失败，不会存在只读部分数据
+- 写操作替换znode所有数据，要么写失败，不会存在部分写的情况
+
+znode通过路径被引用
+
+##### 短暂znode
+
+创建短暂znode的客户端会话结束时，ZooKeeper会将该短暂znode删除，相比之下，持久znode不依赖于客户端会话，只有客户端明确要删除该持久znode时才会被删除。短暂znode不可以有子节点，即使是短暂子节点，对于那些需要知道特性时刻有哪些分布式资源可用的应用来说，使用短暂znode是一种理想的选择
+
+##### 顺序号
+
+顺序(sequential)znode是指名称中包含ZooKeeper指定顺序号的znode，如果在创建znode时设置了顺序标识，那么该znode名称之后便会
+附加一个值，这个值是一个单调递增的计数器所添加的
+
+在一个分布式系统中，顺序号可以被用于为所有的事件进行全局排序，这样客户端就可以通过顺序来推断事件的顺序
+
+##### 观察
+
+znode以某种方式发生变化时，观察watch机制可以让客户端得到通知，观察只能够触发一次，为了能够多次收到通知，客户端需要重新注册所需的观察
+
+#### 操作
+
+ZooKeeper服务的操作
+
+| Operation        | Description                                             |
+| ---------------- | ------------------------------------------------------- |
+| create           | Creates a znode (the parent znode must already exist)   |
+| delete           | Deletes a znode (the znode must not have any children)  |
+| exists           | Tests whether a znode exists and retrieves its metadata |
+| getACL, setACL   | Gets/sets the ACL for a znode                           |
+| getChildren      | Gets a list of the children of a znode                  |
+| getData, setData | Gets/sets the data associated with a znode              |
+| sync             | Synchronizes a client’s view of a znode with ZooKeeper |
+
+##### 1.集合更新
+
+ZooKeeper中有一个被称为multi的操作，用于将多个基本操作集合成一个操作单元，并保证这些基本操作同时被成功执行或者同时失败
+
+集合更新可用于在Zookeeper中构建需要保持全局一致性的数据结构
+
+##### 2.关于API
+
+- 同步API
+- 异步API
+
+##### 3.观察触发器
+
+- 当所观察的znode被创建，删除或者数据被更新时，设置在exists操作上的观察将被触发
+- 当所观察的znode被删除或者数据被更新时，设置在getData操作上的观察将被触发，创建znode不会触发getData操作上的观察
+- 所观察的znode的一个子节点被创建或删除时，或所观察的znode自己被删除，设置在getChildren操作上的观察将会被触发
+
+| Watch creation | create znode | create child        | delete znode | delete child        | setData         |
+| -------------- | ------------ | ------------------- | ------------ | ------------------- | --------------- |
+| exists         | NodeCreated  |                     | NodeDeleted  |                     | NodeDataChanged |
+| getData        |              |                     | NodeDeleted  |                     | NodeDataChanged |
+| getChildren    |              | NodeChildrenChanged | NodeDeleted  | NodeChildrenChanged |
+
+##### 4.ACL
+
+每个znode创建时都会带有一个ACL列表用于决定谁可以对它执行何种操作
+
+ZooKeeper提供了以下几种身份验证方式
+
+- digest 通过用户名和密码来识别客户端
+- sasl 通过Kerberos来识别客户端
+- ip 通过客户端的IP地址来识别客户端
+
+建立一个ZooKeeper会话之后，客户端可以对自己进行身份验证，索然znode的ACL列表要求所有客户端是经过验证的，但ZooKeeper的身份验证过程却是可选的,客户端必须自己进行身份验证来支持对znode的访问
+
+| ACL权限 | 允许的操作             |
+| ------- | ---------------------- |
+| CREATE  | create (a child znode) |
+| READ    | getChildren, getData   |
+| WRITE   | setData                |
+| DELETE  | delete (a child znode) |
+| ADMIN   | setACL                 |
+
+#### 实现
+
+ZooKeeper服务有两种不同的运行模式
+
+- 独立模式，只有一个ZooKeeper服务器
+- 复制模式，ZooKeeper运行在一个计算机集群上，这个计算机集群被称为集合体,一个集合体通常包含奇数台机器
+
+从概念上说，ZooKeeper是非常简单的，它所做的就是确保对znode树的每个修改都会被复制到集合体中超过半数的机器上
+
+ZooKeeper使用了Zab协议，该协议包括两个可以无限重复的阶段
+
+##### 阶段1:领导者选举
+
+集合体中所有机器通过一个选择过程来选出一台被称为领导者的机器，其他机器被称为跟随者，一旦半数以上的跟随者已经将其状态与领导者同步，表明这个阶段已经完成
+
+##### 阶段2:原子广播
+
+所有写操作都会被转发给领导者，再由领导者将更新广播给跟随者，当半数以上的跟随者已经将修改持久化之后，领导者才会提交这个更新，然后客户端才会收到一个更新成功的响应，这个用来达成共识的协议被设计成具有原子性，因此每个修改要么成功要么失败
+
+领导者出现故障，其余机器会选出另外一个领导者，并和新的领导者一起继续提供服务，之前的领导者恢复正常会成为一个跟随者
+
+#### 一致性
+
+理解ZooKeeper的实现有助于理解其服务所提供的一致性保证，跟随者可以滞后领导者几个更新，这表明在一个修改被提交之前，只需要集合体中半数以上机器已经将该修改持久化即可，每个客户端都有可能被连接到领导者，但客户端对此无法控制，甚至它自己都无法知道是否连接到领导者
+
+跟随者负责响应读请求，领导者负责提交写请求
+
+![zookeeperService](image/zookeeperService.png)
+
+每一个对znode树的更新都会被赋予一个全局唯一的ID，称为zxid，ZooKeeper要求对所有的更新进行编号并排序
+
+在ZooKeeper的设计中，以下几点保证了数据的一致性
+
+1. 顺序一致性
+   - 来自任意特定客户端的更新都会按其发送顺序被提交，例如znode z的值为a，更新为b，没有客户端可以看到z的值是b之后再看到a
+2. 原子性
+   - 每个更新要么成功，要么失败
+3. 单一系统映像
+   - 一个客户端无论连接到哪一台服务器，它看到的都是同样的系统视图
+4. 持久性
+   - 一个更新一旦成功，其结果就会持久存在并且不会被撤销
+5. 及时性
+   - 任何客户端所看到的滞后系统视图都是有限的，不会超过几十秒，这意味着与其允许一个客户端看到非常陈旧的数据还不如将服务器关闭，强迫该客户端连接到一个状态较新的服务器
+
+#### 会话
+
+每个ZooKeeper客户端的配置中都包括集合体中服务器的列表，一个客户端与一台ZooKeeper服务器建立连接，这台服务器就会为该客户端创建一个新的会话，只要一个会话空闲超过一定时间，都可以通过客户端发送ping请求来保持会话不过期，这个时间长度应当足够低，以便能够检测出服务器故障，并且能够在会话超时的时间段内重新连接到另一台服务器
+
+较短的会话超时设置会较快地检测到机器故障，但要避免超时时间设得太低导致的振动现象：在很短的时间内反复出现离开后又重新加入组的情况
+
+对于那些创建较复杂暂时状态的应用程序来说，由于重建代价较大，因此比较适合设置较长的会话超时
+
+#### 状态
+
+![zookeeperState](image/zookeeperState.png)
+
+ZooKeeper的watcher对象肩负着两个责任
+
+- 一方面它被用于获得ZooKeeper状态变化的相关通知
+- 另一方面还可以用于获得znode变化的相关通知
+
+### 使用ZooKeeper来构建应用
+
+#### 配置服务
+
+配置服务是分布式应用所需要的基本服务之一，它使集群中的机器可以共享配置信息中那些公共部分
+
+观察ZooKeeper中配置属性的更新情况并将其输出
+
+```java
+import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.WatchedEvent;
+import org.apache.zookeeper.Watcher;
+
+import java.io.IOException;
+
+public class ConfigWatcher implements Watcher {
+    private ActiveKeyValueStore store;
+    public ConfigWatcher(String host) throws InterruptedException, IOException {
+        store = new ActiveKeyValueStore();
+        store.connect(host);
+    }
+
+    public void displayConfig() throws InterruptedException, KeeperException {
+        // 将自身ConfigWatcher作为观察传递给store
+        // 该方法用于显示它所读到的配置信息的初始值
+        String value = store.read(ConfigUpdater.PATH, this);
+        System.out.printf("Read %s as %s\n", ConfigUpdater.PATH, value);
+    }
+
+    public void process(WatchedEvent event) {
+        // 当ConfigUpdater更新znode时，ZooKeeper产生一个类型为EventType.NodeDataChanged的事件，从而触发观察
+        if (event.getType() == Event.EventType.NodeDataChanged) {
+            try {
+                displayConfig();
+            } catch (InterruptedException e) {
+                System.err.println("Interrupted Exiting");
+                // 取消阻塞方法的标准机制，即对存在阻塞方法的线程调用interrupt
+                Thread.currentThread().interrupt();
+            } catch (KeeperException e) {
+                // 如果ZooKeeper服务器发出一个错误信号或与服务器存在通信问题，抛出的则是KeeperException异常
+                System.err.printf("KeeperException %s Exiting\n", e);
+            }
+        }
+    }
+
+    public static void main(String[] args) throws Exception{
+        ConfigWatcher configWatcher = new ConfigWatcher(args[0]);
+        configWatcher.displayConfig();
+        Thread.sleep(Long.MAX_VALUE);
+    }
+}
+```
+
+ConfigUpdater更新znode
+
+```java
+import org.apache.zookeeper.KeeperException;
+
+import java.io.IOException;
+import java.util.Random;
+import java.util.concurrent.TimeUnit;
+
+public class ConfigUpdater {
+    public static final String PATH = "/config";
+
+    private ActiveKeyValueStore store;
+    private Random random = new Random();
+
+    public ConfigUpdater(String host) throws IOException, InterruptedException {
+        store = new ActiveKeyValueStore();
+        store.connect(host);
+    }
+
+    public void run() throws InterruptedException, KeeperException {
+        while (true) {
+            // 随时间以随机值更新 /config znode
+            String value = random.nextInt(100) + "";
+            store.write(PATH, value);
+            System.out.printf("Set %s to %s\n", PATH, value);
+            TimeUnit.SECONDS.sleep(random.nextInt(10));
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        ConfigUpdater configUpdater = new ConfigUpdater(args[0]);
+        configUpdater.run();
+    }
+}
+```
+
+```java
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.Watcher;
+import org.apache.zookeeper.ZooDefs;
+import org.apache.zookeeper.data.Stat;
+
+import java.nio.charset.Charset;
+
+public class ActiveKeyValueStore extends ConnectionWatcher {
+    public static final Charset CHARSET = Charset.forName("UTF-8");
+    // write 任务是将一个关键字及其值写入ZooKeeper
+    public void write(String path, String value) throws InterruptedException, KeeperException {
+        Stat stat = zk.exists(path, false);
+        if (stat == null) {
+            zk.create(path, value.getBytes(CHARSET), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+        } else {
+            zk.setData(path, value.getBytes(CHARSET), -1);
+        }
+    }
+
+    public String read(String path, Watcher watcher) throws InterruptedException, KeeperException {
+        // 路径，观察对象，Stat对象
+        // Stat对象由getData方法返回的值填充，用来将消息传递给调用者
+        byte[] data = zk.getData(path, watcher, null/*stat*/);
+        return new String(data, CHARSET);
+    }
+}
+```
+
+```text
+maven编译：
+1. mvn clean
+2. mvn compile
+3. mvn package -DskipTests
+```
+
+```text
+运行：
+1. 启动ZooKeeper
+2. export CLASSPATH=/home/kong/IdeaProjects/myhadoop/target/classes/:$ZOOKEEPER_HOME/*:$ZOOKEEPER_HOME/lib/*:$ZOOKEEPER_HOME/conf
+3. 一个窗口运行：java ConfigUpdater localhost
+4. 另一个窗口运行：java ConfigWatcher localhost
+```
+
+```text
+ConfigUpdater：
+Set /config to 56
+Set /config to 99
+Set /config to 6
+```
+
+```text
+ConfigWatcher：
+Read /config as 56
+Read /config as 99
+Read /config as 6
+```
+
+#### 可复原的ZooKeeper应用
+
+在Java API的每个ZooKeeper操作都在其throws子句中声明了两种类型的异常，分别是InterruptedException和KeeperException
+
+InterruptedException异常并不意味着有故障，而是表明相应的操作已经被取消，所以在配置服务器的示例中，可以通过传播异常来终止应用程序
+
+如果ZooKeeper服务器发出一个错误信号或与服务器存在通信问题，抛出的则是KeeperException异常
+
+KeeperException分为三大类
+
+- 状态异常
+  - 当一个操作因不能被应用与znode树而导致失败时，就会出现状态异常
+- 可恢复异常
+  - 指那些应用程序能够在同一个ZooKeeper会话中恢复的异常
+- 不可恢复异常
+  - ZooKeeper会话失效，也许因为超时或因为会话被关闭
+
+可靠的配置服务
+
+- 幂等操作 一次或多次执行都会产生相同结果的操作
+- 非幂等操作 多次执行的结果与一次执行是完全不同的
+
+```java
+// write方法是一个幂等操作，所以我们可以对它进行无条件重试
+public void write(String path, String value) throws InterruptedException, KeeperException {
+    Stat stat = zk.exists(path, false);
+    if (stat == null) {
+        zk.create(path, value.getBytes(CHARSET), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+    } else {
+        zk.setData(path, value.getBytes(CHARSET), -1);
+    }
+}
+```
+
+设置了最大次数MAX_RETRIES和两个重试之间的时间间隔RETRY_PERIOD_SECONDS
+
+```java
+//vv ResilientActiveKeyValueStore-Write
+public void write(String path, String value) throws InterruptedException,
+        KeeperException {
+    int retries = 0;
+    while (true) {
+        try {
+            Stat stat = zk.exists(path, false);
+            if (stat == null) {
+                zk.create(path, value.getBytes(CHARSET), Ids.OPEN_ACL_UNSAFE,
+                        CreateMode.PERSISTENT);
+            } else {
+                zk.setData(path, value.getBytes(CHARSET), stat.getVersion());
+            }
+            return;
+        } catch (KeeperException.SessionExpiredException e) {
+            // 会话过期时，ZooKeeper对象会进入CLOSE状态，此状态它不能再进行重新连接
+            throw e;
+        } catch (KeeperException e) {
+            if (retries++ == MAX_RETRIES) {
+                throw e;
+            }
+            // sleep then retry
+            TimeUnit.SECONDS.sleep(RETRY_PERIOD_SECONDS);
+        }
+    }
+}
+```
+
+一个创建新实例的方法就是创建一个新的ConfigUpdater用于恢复过期会话
+
+```java
+public static void main(String[] args) throws Exception {
+    while (true) {
+        try {/*]*/
+            ResilientConfigUpdater configUpdater =
+                    new ResilientConfigUpdater(args[0]);
+            configUpdater.run();
+            /*[*/} catch (KeeperException.SessionExpiredException e) {
+            // start a new session
+        } catch (KeeperException e) {
+            // already retried, so exit
+            e.printStackTrace();
+            break;
+        }
+    }
+}
+```
+
+处理会话过期的另一个方式是在观察中检测类型为Expired的KeeperState，然后在监测到的时候创建一个连接，即使收到KeeperException.SessionExpiredException异常，但由于连接最终是能够重新建立的，我们就可以使用这种方式在write方法内不断进行重试
+
+#### 锁服务
+
+分布式锁能够在一组进程之间提供互斥机制，使得在任何时刻只有一个进程可以持有锁，分布式锁可以用于在大型分布式系统中实现领导者选举，在任何时间点，持有所的那个进程就是系统的领导者
+
+为了使用ZooKeeper来实现分布式锁服务，我们使用顺序znode来为那些竞争锁的进程强制排序，思路为：
+
+- 首先指定一个作为锁的znode，通过用它来描述被锁定的实体，称为 /leader
+- 然后希望获得锁的客户端创建一些短暂顺序znode，作为锁的子节点
+- 在任何时间点，顺序号最小的客户端将持有锁
+
+**Zookeeper服务是顺序的仲裁者，它负责分配顺序号**，通过创建一个关于znode删除的观察，可以使客户端在获得锁时得到通知
+
+申请获得锁的步骤：
+
+- 1.在锁znode下创建一个名为lock-的短暂顺序znode，并且记住它的实际路径名
+- 2.查询锁znode的子节点并且设置一个观察
+- 3.如果1中所创建的znode在2返回的所有子节点中具有最小的顺序号，则获得锁退出
+- 4.等待步骤2中所设观察的通知，转到步骤2
+
+如果每个可虎胆都在锁znode上设置一个观察，用于捕获子节点的变化，每个锁被释放或一个进程开始申请锁的时候，观察者都会被触发并且每个客户端都会收到一个通知，羊群效应就是这种大量客户端收到同一事件的通知
+
+##### 1.羊群效应
+
+为避免出现羊群效应，我们需要优化发送通知的条件，关键在于仅当前一个顺序号的子节点消失时才需要通知下一个客户端，而不是删除任何子节点时都进行通知
+
+如果客户端创建了 znode `/leader/lock-1` `/leader/lock-2` `/leader/lock-3`，那么只有当`/leader/lock-2` 消失时才需要通知 `/leader/lock-3` 对应的客户端，`/leader/lock-1` 消失或者 `/leader/lock-4` 加入时不需要通知该客户端
+
+##### 2.可恢复的异常
+
+这个申请锁的算法目前还存在另外一个问题，就是不能处理因连接丢失而导致的create操作失败，问题在于在重新连接之后客户端不能够判断它是否已经创建过子节点，解决方法是在znode的名称中嵌入一个ID，如果客户端出现连接丢失的情况，重新连接之后它便可以对锁节点进行检查，如果子节点包含其ID，它便知道自己的创建操作已经成功，不需要再创建，如果没有子节点的名称包含其ID，则客户端可以安全的创建一个新的顺序子节点
+
+znode名称变为 `lock-<sessionID>-<sequenceNumber>`，由于顺序号对于父节点来说是唯一的，但对于子节点名并不唯一，因此采用这样的命名方式可以让子节点在保持创建顺序的同时能够确定自己的创建者
+
+##### 3.不可恢复的异常
+
+如果一个客户端的Zookeeper会话过期，那么它所创建的短暂znode将会被删除，已持有的锁会被释放，或者是放弃了申请锁的位置，拥有锁的应用程序应当意识到它已经不再持有锁，应当清理它的状态，然后通过创建并申请一个新的锁对象来重新启动
+
+##### 4.实现
+
+生产级别的锁实现，WriteLock
+
+#### 更多分布式数据结构和协议
+
+BookKeeper 和 Hedwig
+
+BookKeeper是一个具有高可用性和高可靠性的日志服务，它可以用来实现预写式日志，这是一项在存储系统中用于保证数据完整性的常用技术
+
+Hedwig是利用BookKeeper实现的一个基于主题的发布订阅系统
+
+### 生产环境中的ZooKeeper
+
+在安放ZooKeeper所用的机器时，应当考虑尽量减少机器和网络故障可能带来的影响，在实践过程中，一般是跨机架，电源和交换机来安放服务器
