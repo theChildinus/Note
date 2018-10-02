@@ -1090,6 +1090,7 @@ public int titleToNumber(String s) {
 ```
 
 ### 问题：Longest Palindromic Substring 最长回文
+
 Set
 题号：5
 
@@ -1750,6 +1751,61 @@ private TreeNode toBST(ListNode head, ListNode tail) {
 }
 ```
 
+### 问题：Unique Binary Search Trees I II
+
+题号：96 95
+
+96 描述：求二叉搜索树的个数
+
+思路：`F(i, n)` 表示以某个节点i为根节点，小于i的节点为左子树，大于i的节点为右子树可以构造的树的个数，`F(i, n) = G(i - 1) * G(n - i)`, `G(i)` 表示当树节点个数为i时，可以构造树的个数 `G(n) += sum(F(i, n))`
+
+```java
+public int numTrees(int n) {
+int[] G = new int[n + 1];
+G[0] = 1;
+G[1] = 1;
+
+for (int i = 2; i <= n; ++i) {
+    for (int j = 1; j <= i; ++j) {
+    G[i] += G[j - 1] * G[i - j];
+    }
+}
+return G[n];
+}
+```
+
+95 描述：求出所有的二叉搜索树
+
+```java
+public List<TreeNode> generateTrees(int n) {
+    if (n <= 0) return new ArrayList<>();
+    List<TreeNode> ans = new ArrayList<>();
+    return buildSubTree(1, n);
+}
+
+private List<TreeNode> buildSubTree(int start, int end) {
+    List<TreeNode> res = new ArrayList<>();
+    if (end < start) {
+        res.add(null);
+        return res;
+    }
+
+    for (int i = start; i <= end; i++) {
+        List<TreeNode> leftNodes = buildSubTree(start, i - 1);
+        List<TreeNode> rightNodes = buildSubTree(i + 1, end);
+        for (TreeNode left : leftNodes) {
+            for (TreeNode right : rightNodes) {
+                TreeNode root = new TreeNode(i);
+                root.left = left;
+                root.right = right;
+                res.add(root);
+            }
+        }
+    }
+    return res;
+}
+```
+
 ## BackTracking
 
 ### 问题：Subsets I，II
@@ -2093,6 +2149,434 @@ private void letterCombinations (List<String> list, String digits, String curr, 
         String next = curr + temp.charAt(i);
         //进入下一层
         letterCombinations(list,digits,next,index+1,table);
+    }
+}
+```
+
+## Dynamic Programming
+
+### 问题：Climbing Stairs
+
+题号：70
+
+思路1: Fibonacci Number
+
+```java
+public int climbStairs(int n) {
+    if (n == 1) {
+        return 1;
+    }
+    int first = 1;
+    int second = 2;
+    for (int i = 3; i <= n; i++) {
+        int third = first + second;
+        first = second;
+        second = third;
+    }
+    return second;
+}
+```
+
+思路2: dp
+
+```java
+public int climbStairs(int n) {
+    if (n == 1) {
+        return 1;
+    }
+    int[] dp = new int[n + 1];
+    dp[1] = 1;
+    dp[2] = 2;
+    for (int i = 3; i <= n; i++) {
+        dp[i] = dp[i - 1] + dp[i - 2];
+    }
+    return dp[n];
+}
+```
+
+### 问题：Triangle
+
+题号：120
+
+down-top
+
+```java
+public int minimumTotal(List<List<Integer>> triangle) {
+    if (triangle == null || triangle.isEmpty()) return 0;
+
+    int rows = triangle.size();
+    int[] sums = new int[rows + 1];
+
+    for (int i = rows - 1; i >= 0 ; i--) {
+        List<Integer> rowNodes = triangle.get(i);
+        for (int j = 0; j <= i; j++) {
+            sums[j] = rowNodes.get(j) + Math.min(sums[j], sums[j + 1]);
+        }
+    }
+
+    return sums[0];
+}
+```
+
+top-down
+
+```java
+public int minimumTotal(List<List<Integer>> triangle) {
+    if (triangle.size() == 0) return 0;
+    List<Integer> ans = triangle.get(0);
+    for (int i = 1; i < triangle.size(); i++) {
+        ans = addLevel(ans, triangle.get(i));
+    }
+    int min = Integer.MAX_VALUE;
+    for (int i : ans) {
+        min = Math.min(min, i);
+    }
+    return min;
+}
+
+private List<Integer> addLevel(List<Integer> up, List<Integer> down) {
+    List<Integer> ret = new ArrayList<Integer>();
+    for (int i = 0; i < down.size(); i++) {
+        if (i == 0) {
+            ret.add(up.get(0) + down.get(0));
+        } else if (i == down.size() - 1) {
+            ret.add(up.get(up.size() - 1) + down.get(down.size() - 1));
+        } else {
+            ret.add(Math.min(down.get(i) + up.get(i), down.get(i) + up.get(i - 1)));
+        }
+    }
+    return ret;
+}
+```
+
+### 问题：Word Break
+
+题号：139
+
+思路：
+
+- `dp[i]` 表示前 `i` 个字符能不能被dict完美划分
+- 判断 `di[i]` 需要遍历 `0~i` 中是否存在一个j使得 `dp[j] == true` 而且 `j+1 ~ i` 存在于dict中
+- 注意是前 `i` 个字符 `substring(j, i)` i代表的是尾后指针
+
+```java
+public boolean wordBreak(String s, List<String> wordDict) {
+    if (s.isEmpty()) return false;
+    int n = s.length();
+    boolean[] dp = new boolean[n + 1];
+    dp[0] = true;
+    for (int i = 1; i <= n; i++) {
+        for (int j = 0; j < i; j++) {
+            if (dp[j] && wordDict.contains(s.substring(j, i))) {
+                dp[i] = true;
+            }
+        }
+    }
+    return dp[n];
+}
+```
+
+### 问题：Perfect Squares
+
+题号：279
+
+思路：
+
+```txt
+dp[0] = 0
+dp[1] = dp[0]+1 = 1
+dp[2] = dp[1]+1 = 2
+dp[3] = dp[2]+1 = 3
+dp[4] = Min{ dp[4-1*1]+1, dp[4-2*2]+1 }
+      = Min{ dp[3]+1, dp[0]+1 }
+      = 1
+dp[5] = Min{ dp[5-1*1]+1, dp[5-2*2]+1 }
+      = Min{ dp[4]+1, dp[1]+1 }
+      = 2
+                        .
+                        .
+                        .
+dp[13] = Min{ dp[13-1*1]+1, dp[13-2*2]+1, dp[13-3*3]+1 }
+       = Min{ dp[12]+1, dp[9]+1, dp[4]+1 }
+       = 2
+                        .
+                        .
+                        .
+dp[n] = Min{ dp[n - i*i] + 1 },  n - i*i >=0 && i >= 1
+```
+
+```java
+public int numSquares(int n) {
+    int[] dp = new int[n + 1];
+    Arrays.fill(dp, Integer.MAX_VALUE);
+    dp[0] = 0;
+    for(int i = 1; i <= n; ++i) {
+        int min = Integer.MAX_VALUE;
+        int j = 1;
+        while(i - j*j >= 0) {
+            // 1代表取平方数
+            min = Math.min(min, dp[i - j*j] + 1);
+            ++j;
+        }
+        dp[i] = min;
+    }
+    return dp[n];
+}
+```
+
+### 问题：Dungeon Game
+
+题号：174
+
+从后向前依次决定每个位置至少需要多少血量，状态转移方程 `dp[i][j] = min(dp[i+1][j] - dungon[i][j], dp[i][j+1] - dungon[i][j])`
+
+还有每个状态的血量都要至少为1，因此我们还需要在上一步的基础上保证`dp[i][j] = max(dp[i][j], 1)`
+
+```java
+public int calculateMinimumHP(int[][] dungon) {
+    if (dungon == null || dungon.length == 0 || dungon[0].length  == 0) return 0;
+
+    int m = dungon.length;
+    int n = dungon[0].length;
+
+    int[][] health = new int[m][n];
+
+    health[m - 1][n - 1] = Math.max(1 - dungon[m - 1][n - 1], 1);
+
+    for (int i = m - 2; i >= 0; i--) {
+        health[i][n - 1] = Math.max(health[i + 1][n - 1] - dungon[i][n - 1], 1);
+    }
+
+    for (int j = n - 2; j >= 0; j--) {
+        health[m - 1][j] = Math.max(health[m - 1][j + 1] - dungon[m - 1][j], 1);
+    }
+
+    for (int i = m - 2; i >= 0; i--) {
+        for (int j = n - 2; j >= 0; j--) {
+            int down = Math.max(health[i + 1][j] - dungon[i][j], 1);
+            int right = Math.max(health[i][j + 1] - dungon[i][j], 1);
+            health[i][j] = Math.min(down, right);
+        }
+    }
+    return health[0][0];
+}
+```
+
+状态压缩
+
+```java
+public int calculateMinimumHP(int[][] dungon) {
+    if (dungon == null || dungon.length == 0 || dungon[0].length  == 0) return 0;
+
+    int m = dungon.length;
+    int n = dungon[0].length;
+
+    int[] dp = new int[n + 1];
+    Arrays.fill(dp, Integer.MAX_VALUE);
+    dp[n - 1] = 1;
+    for (int i = m - 1; i >= 0; i--) {
+        for (int j = n - 1; j >= 0; j--) {
+            // 这里不能写成 min(dp[j] - dungon[i][j], d[j + 1] - dungon[i][j])，因为dp[j + 1] = Integer.MAX_VALUE，dungon[i][j]为负数时会超范围
+            dp[j] = Math.max(Math.min(dp[j], dp[j + 1]) - dungon[i][j], 1);
+        }
+    }
+    return dp[0];
+}
+```
+
+### 问题：Range Sum Query 2D - Immutable
+
+题号：304
+
+[思路](https://leetcode.com/problems/range-sum-query-2d-immutable/discuss/75350/Clean-C++-Solution-and-Explaination-O(mn)-space-with-O(1)-time)
+
+
+
+```java
+class NumMatrix {
+    private int[][] dp;
+    public NumMatrix(int[][] matrix) {
+        if (matrix == null || matrix.length == 0) {
+            return;
+        }
+        int m = matrix.length;
+        int n = matrix[0].length;
+        dp = new int[m + 1][n + 1];
+
+        for (int i = 1; i <= m; i++) {
+            for (int j = 1; j <= n; j++) {
+                dp[i][j] = dp[i - 1][j] + dp[i][j - 1] - dp[i - 1][j - 1] + matrix[i - 1][j - 1];
+            }
+        }
+    }
+
+    int sumRegion(int row1, int col1, int row2, int col2) {
+        if (dp == null || dp.length == 0) {
+            return 0;
+        }
+        return dp[row2 + 1][col2 + 1] - dp[row2 + 1][col1] - dp[row1][col2 + 1] + dp[row1][col1];
+    }
+}
+```
+
+## BFS & DFS
+
+### 问题：Number of Islands
+
+题号：200
+
+思路1：Union Fild
+
+并差集类：
+
+```java
+class UnionFind {
+    int[] father;  
+    int m, n;
+    int count = 0;
+    UnionFind(char[][] grid) {  
+        m = grid.length;  
+        n = grid[0].length;  
+        father = new int[m * n];  
+        for (int i = 0; i < m; i++) {  
+            for (int j = 0; j < n; j++) {  
+                if (grid[i][j] == '1') {
+                    int id = i * n + j;
+                    father[id] = id;
+                    count++;
+                }
+            }  
+        }  
+    }
+    public void union(int node1, int node2) {  
+        int find1 = find(node1);
+        int find2 = find(node2);
+        if(find1 != find2) {
+            father[find1] = find2;
+            count--;
+        }
+    }
+    public int find (int node) {  
+        if (father[node] == node) {  
+            return node;
+        }
+        father[node] = find(father[node]);  
+        return father[node];
+    }
+}
+```
+
+实现：
+
+```java
+int[][] distance = {{1,0},{-1,0},{0,1},{0,-1}}; // 定义四个方向
+public int numIslands(char[][] grid) {  
+    if (grid == null || grid.length == 0 || grid[0].length == 0)  {
+        return 0;  
+    }
+    UnionFind uf = new UnionFind(grid);  
+    int rows = grid.length;  
+    int cols = grid[0].length;  
+    for (int i = 0; i < rows; i++) {  
+        for (int j = 0; j < cols; j++) {  
+            if (grid[i][j] == '1') {  
+                for (int[] d : distance) {
+                    int x = i + d[0];
+                    int y = j + d[1];
+                    if (x >= 0 && x < rows && y >= 0 && y < cols && grid[x][y] == '1') {  
+                        int id1 = i*cols+j;
+                        int id2 = x*cols+y;
+                        // 两两将点连接起来
+                        uf.union(id1, id2);  
+                    }  
+                }  
+            }  
+        }  
+    }  
+    return uf.count;  
+}
+```
+
+思路2：DFS
+
+```java
+private int n;
+private int m;
+
+public int numIslands(char[][] grid) {
+    int count = 0;
+    n = grid.length;
+    if (n == 0) return 0;
+    m = grid[0].length;
+    for (int i = 0; i < n; i++){
+        for (int j = 0; j < m; j++)
+            if (grid[i][j] == '1') {
+                // 将与起始的1相连的1全部置为0，并计数
+                DFSMarking(grid, i, j);
+                ++count;
+            }
+    }
+    return count;
+}
+
+private void DFSMarking(char[][] grid, int i, int j) {
+    if (i < 0 || j < 0 || i >= n || j >= m || grid[i][j] != '1') return;
+    grid[i][j] = '0';
+    DFSMarking(grid, i + 1, j);
+    DFSMarking(grid, i - 1, j);
+    DFSMarking(grid, i, j + 1);
+    DFSMarking(grid, i, j - 1);
+}
+```
+
+思路3：BFS
+
+```java
+int[][] distance = {{1,0},{-1,0},{0,1},{0,-1}};
+
+class PosPair {
+    int x;
+    int y;
+    public PosPair(int x, int y) {
+        this.x = x;
+        this.y = y;
+    }
+    public int getX() { return x; }
+    public int getY() { return y; }
+}
+
+public int numIslands(char[][] grid) {
+    if (grid.length == 0 || grid[0].length == 0) {
+        return 0;
+    }
+    int count = 0;
+    Deque<PosPair> queue = new ArrayDeque<>();
+    int m = grid.length;
+    int n = grid[0].length;
+    for (int i = 0; i < m; i++) {
+        for (int j = 0; j < n; j++) {
+            if (grid[i][j] == '1') {
+                count++;
+                queue.offerLast(new PosPair(i, j));
+                findIsland(queue, grid, m, n);
+            }
+        }
+    }
+    return count;
+}
+
+private void findIsland(Deque<PosPair> queue, char[][] grid, int m, int n) {
+    while (!queue.isEmpty()) {
+        int x = queue.peekFirst().getX();
+        int y = queue.peekFirst().getY();
+        queue.pollFirst();
+        for (int[] dir : distance) {
+            int i = x + dir[0];
+            int j = y + dir[1];
+            if (i < 0 || j < 0 || i >= m || j >= n|| grid[i][j] == '0') continue;
+            grid[i][j] = '0';
+            queue.offerLast(new PosPair(i, j));
+        }
     }
 }
 ```
