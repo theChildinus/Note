@@ -1864,9 +1864,9 @@ private void subsetbackTrack(List<List<Integer>> list, List<Integer> tmplist, in
 }
 ```
 
-问题：Combination Sum I II III IV
+问题：Combination Sum I II III
 
-题号：39，40，216，377
+题号：39，40，216
 
 39:
 
@@ -1973,12 +1973,6 @@ public void combineBackTrack3(List<List<Integer>> ans, List<Integer> tmplist, in
         tmplist.remove(tmplist.size() - 1);
     }
 }
-```
-
-377：
-
-```java
-
 ```
 
 ### 问题：Permutations 全排列 I II
@@ -2390,8 +2384,6 @@ public int calculateMinimumHP(int[][] dungon) {
 
 [思路](https://leetcode.com/problems/range-sum-query-2d-immutable/discuss/75350/Clean-C++-Solution-and-Explaination-O(mn)-space-with-O(1)-time)
 
-
-
 ```java
 class NumMatrix {
     private int[][] dp;
@@ -2415,6 +2407,367 @@ class NumMatrix {
             return 0;
         }
         return dp[row2 + 1][col2 + 1] - dp[row2 + 1][col1] - dp[row1][col2 + 1] + dp[row1][col1];
+    }
+}
+```
+
+## LinkedList
+
+### 问题：Reverse Linked List I II
+
+题号：206, 92
+
+反向指，we have linked list `1 → 2 → 3 → Ø`, we would like to change it to `Ø ← 1 ← 2 ← 3`.
+
+```java
+public ListNode reverseList(ListNode head) {
+    ListNode prev = null;
+    ListNode curr = head;
+    while (curr != null) {
+        ListNode nextTemp = curr.next;
+        curr.next = prev;
+        prev = curr;
+        curr = nextTemp;
+    }
+    return prev;
+}
+```
+
+Recursive
+
+```java
+public ListNode reverseList(ListNode head) {
+    if (head == null || head.next == null) return head;
+    ListNode p = reverseList(head.next);
+    head.next.next = head;
+    head.next = null;
+    return p;
+}
+```
+
+部分反转
+
+```java
+public ListNode reverseBetween(ListNode head, int m, int n) {
+    if(head == null) return null;
+    ListNode dummy = new ListNode(0); // create a dummy node to mark the head of this list
+    dummy.next = head;
+    ListNode pre = dummy; // make a pointer pre as a marker for the node before reversing
+    for(int i = 0; i<m-1; i++) pre = pre.next;
+
+    ListNode start = pre.next; // a pointer to the beginning of a sub-list that will be reversed
+    ListNode then = start.next; // a pointer to a node that will be reversed
+
+    // 1 - 2 -3 - 4 - 5 ; m=2; n =4 ---> pre = 1, start = 2, then = 3
+    // dummy-> 1 -> 2 -> 3 -> 4 -> 5
+
+    for(int i=0; i<n-m; i++)
+    {
+        start.next = then.next;
+        then.next = pre.next;
+        pre.next = then;
+        then = start.next;
+    }
+
+    // first reversing : dummy->1 - 3 - 2 - 4 - 5; pre = 1, start = 2, then = 4
+    // second reversing: dummy->1 - 4 - 3 - 2 - 5; pre = 1, start = 2, then = 5 (finish)
+
+    return dummy.next;
+}
+```
+
+
+### 问题：Linked List Cycle
+
+题号：141
+
+```java
+public boolean hasCycle(ListNode head) {
+    if (head == null || head.next == null) {
+        return false;
+    }
+    ListNode slow = head;
+    ListNode fast = head.next;
+    while (slow != fast) {
+        if (fast == null || fast.next == null) {
+            return false;
+        }
+        slow = slow.next;
+        fast = fast.next.next;
+    }
+    return true;
+}
+```
+
+### 问题：Swap Node in Pairs
+
+题号:24
+
+自己的解法
+
+```java
+public ListNode swapPairs(ListNode head) {
+    if (head == null || head.next == null) return head;
+    ListNode pre = head;
+    ListNode post = head.next;
+    ListNode ans = post;
+    ListNode prepre = null;
+    while (pre != null && post != null) {
+        swap(prepre, pre, post);
+        prepre = pre;
+        pre = pre.next;
+        if (pre != null) {
+            post = pre.next;
+        }
+    }
+    return ans;
+}
+private void swap(ListNode prepre, ListNode pre, ListNode post) {
+    pre.next = post.next;
+    post.next = pre;
+    if (prepre != null) {
+        prepre.next = post;
+    }
+}
+```
+
+别人的解法
+
+```java
+public ListNode swapPairs(ListNode head) {
+    // 加空头节点， 头节点的下一个节点就是链表的头节点
+    ListNode dummy = new ListNode(0);
+    ListNode prev = dummy;
+    prev.next = head;
+    while(prev.next != null && prev.next.next!= null) {
+        ListNode first = prev.next;
+        ListNode second = prev.next.next;
+        first.next = second.next;
+        second.next = first;
+        prev.next = second;
+        prev = first;
+    }
+    return dummy.next;
+}
+```
+
+### 问题：Odd Even LinkedList
+
+题号：328
+
+思路很简单，将下标为奇数的元素放在一个链表中，偶数的元素放到另一个链表中，然后将偶数元素的链表链接在奇数元素之后，但是写一个简单无错的代码很难
+
+自己写的：
+
+```java
+public ListNode oddEvenList(ListNode head) {
+    if (head == null || head.next == null) return head;
+    ListNode oddhead = head;
+    ListNode evenhead = head.next;
+    ListNode oddcur = oddhead;
+    ListNode evencur = evenhead;
+    while (evencur != null) {
+        oddcur.next = evencur.next;
+        if (oddcur.next != null) {
+            evencur.next = oddcur.next.next;
+        }
+        oddcur = oddcur.next;
+        evencur = evencur.next;
+    }
+    ListNode tmp = oddhead;
+    while (tmp.next != null) {
+        tmp = tmp.next;
+    }
+    tmp.next = evenhead;
+    return oddhead;
+}
+```
+
+[LeetCode Solution](https://leetcode.com/problems/odd-even-linked-list/solution/)
+
+```java
+public ListNode oddEvenList(ListNode head) {
+    if (head == null) return null;
+    ListNode odd = head, even = head.next, evenHead = even;
+    while (even != null && even.next != null) {
+        odd.next = even.next;
+        odd = odd.next;
+        even.next = odd.next;
+        even = even.next;
+    }
+    odd.next = evenHead;
+    return head;
+}
+```
+
+### 问题：Remove Nth Node From End of List
+
+题号：19
+
+自己的解法 Two pass algorithm
+
+```java
+public ListNode removeNthFromEnd(ListNode head, int n) {
+    ListNode dummy = new ListNode(0);
+    dummy.next = head;
+    int num = 0;
+    ListNode cur = dummy;
+    while (cur != null) {
+        num++;
+        cur = cur.next;
+    }
+    cur = dummy;
+    int count = 0;
+    while (cur != null && count++ != num - n - 1) {
+        cur = cur.next;
+    }
+    cur.next = cur.next.next;
+    return dummy.next;
+}
+```
+
+One pass algorithm：
+
+```java
+public ListNode removeNthFromEnd(ListNode head, int n) {
+    ListNode dummy = new ListNode(0);
+    dummy.next = head;
+    ListNode first = dummy;
+    ListNode second = dummy;
+    // Advances first pointer so that the gap between first and second is n nodes apart
+    for (int i = 1; i <= n + 1; i++) {
+        first = first.next;
+    }
+    // Move first to the end, maintaining the gap
+    while (first != null) {
+        first = first.next;
+        second = second.next;
+    }
+    second.next = second.next.next;
+    return dummy.next;
+}
+```
+
+### 问题：Remove Duplicates from Sorted List I II
+
+题号：83 82
+
+83：
+
+```java
+public ListNode deleteDuplicates(ListNode head) {
+    ListNode dummy = new ListNode(Integer.MAX_VALUE);
+    dummy.next = head;
+    ListNode cur = dummy;
+    while (cur != null && cur.next != null) {
+        if (cur.val == cur.next.val) {
+            cur.next = cur.next.next;
+        } else {
+            cur = cur.next;
+        }
+    }
+    return dummy.next;
+}
+```
+
+82：
+
+```java
+public ListNode deleteDuplicates(ListNode head) {
+//use two pointers, slow - track the node before the dup nodes,
+// fast - to find the last node of dups.
+    ListNode dummy = new ListNode(0), fast = head, slow = dummy;
+    slow.next = fast;
+    while(fast != null) {
+        while (fast.next != null && fast.val == fast.next.val) {
+            fast = fast.next;    //while loop to find the last node of the dups.
+        }
+        // 判断的是指针地址是否相同
+        if (slow.next != fast) { //duplicates detected.
+            slow.next = fast.next; //remove the dups.
+            fast = slow.next;     //reposition the fast pointer.
+        } else { //no dup, move down both pointer.
+            slow = slow.next;
+            fast = fast.next;
+        }
+    }
+    return dummy.next;
+```
+
+### 问题：Add Two Numbers
+
+题号：2
+
+之前自己写的代码很长，优化后的版本，如果只有一个链表中含有数字，那么另一个链表中的数字假设为0，然后相加
+
+```java
+public ListNode addTwoNumbers(ListNode l1, ListNode l2) {
+    if (l1 == null || l2 == null) return null;
+    int c = 0;
+    ListNode dummy = new ListNode(0);
+    ListNode cur = dummy;
+    while (l1 != null || l2 != null) {
+        int x = (l1 != null) ? l1.val : 0;
+        int y = (l2 != null) ? l2.val : 0;
+        int sum = x + y + c;
+        cur.next = new ListNode (sum % 10);
+        cur = cur.next;
+        if (l1 != null) l1 = l1.next;
+        if (l2 != null) l2 = l2.next;
+        c = sum / 10;
+    }
+    if (c != 0) {
+        cur.next = new ListNode(c);
+    }
+    return dummy.next;
+}
+```
+
+### 问题：Merge Two Sorted Lists
+
+题号：21
+
+```java
+public ListNode mergeTwoLists(ListNode l1, ListNode l2) {
+    if (l1 != null && l2 == null) return l1;
+    if (l1 == null && l2 != null) return l2;
+    if (l1 == null && l2 == null) return null;
+
+    ListNode dummy = new ListNode(0);
+    ListNode cur = dummy;
+    ListNode ll1 = l1;
+    ListNode ll2 = l2;
+    while (ll1 != null && ll2 != null) {
+        if (ll1.val <= ll2.val) {
+            cur.next = ll1;
+            ll1 = ll1.next;
+        } else {
+            cur.next = ll2;
+            ll2 = ll2.next;
+        }
+        cur = cur.next;
+    }
+    if (ll1 != null) {
+        cur.next = ll1;
+    } else {
+        cur.next = ll2;
+    }
+    return dummy.next;
+}
+```
+
+递归：
+
+```java
+public ListNode mergeTwoLists(ListNode l1, ListNode l2){
+    if (l1 == null) return l2;
+    if (l2 == null) return l1;
+    if (l1.val < l2.val){
+        l1.next = mergeTwoLists(l1.next, l2);
+        return l1;
+    } else {
+        l2.next = mergeTwoLists(l1, l2.next);
+        return l2;
     }
 }
 ```
