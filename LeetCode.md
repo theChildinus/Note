@@ -77,7 +77,7 @@ public int removeDuplicates(int[] nums) {
 }
 ```
 
-### 题目：旋转数组
+### 问题：旋转数组
 
 题号：189
 
@@ -114,7 +114,7 @@ public void rotate(int[] nums, int k) {
 }
 ```
 
-### 题目：从未排序的整数数组中找出最小的未出现的正整数
+### 问题：从未排序的整数数组中找出最小的未出现的正整数
 
 题号：41
 
@@ -809,6 +809,70 @@ public int findDuplicate(int[] nums) {
 }
 ```
 
+### 问题：Median of Two Sorted Arrays
+
+题号：4
+
+思想：[分治](https://blog.csdn.net/hk2291976/article/details/**51107778**)
+
+```java
+public double findMedianSortedArrays(int[] nums1, int[] nums2) {
+    int n = nums1.length;
+    int m = nums2.length;
+    if(n > m)   //保证数组1一定最短
+        return findMedianSortedArrays(nums2, nums1);
+    int L1 = 0,L2 = 0, R1 = 0, R2 = 0;
+    int c1, c2, lo = 0, hi = 2*n;  //我们目前是虚拟加了'#'所以数组1是2*n长度
+    while(lo <= hi)   //二分
+    { 
+        c1 = (lo + hi) / 2;  //c1是二分的结果
+        c2 = m + n - c1;
+        L1 = (c1 == 0) ? Integer.MIN_VALUE : nums1[(c1 - 1) / 2];   //map to original element
+        R1 = (c1 == 2 * n) ? Integer.MAX_VALUE : nums1[c1 / 2];
+        L2 = (c2 == 0) ? Integer.MIN_VALUE : nums2[(c2 - 1) / 2];
+        R2 = (c2 == 2 * m) ? Integer.MAX_VALUE : nums2[c2 / 2];
+
+        if(L1 > R2)
+            hi = c1 - 1;
+        else if(L2 > R1)
+            lo = c1 + 1;
+        else
+            break;
+    }
+    return (Math.max(L1, L2) + Math.min(R1, R2)) / 2.0;
+}
+```
+
+### 问题：Merge Intervals
+
+题号：56
+
+```java
+public List<Interval> merge(List<Interval> intervals) {
+    if (intervals.isEmpty()) return new ArrayList<Interval>();
+    Collections.sort(intervals, new Comparator<Interval>() {
+        @Override
+        public int compare(Interval o1, Interval o2) {
+            return Integer.compare(o1.start, o2.start);
+        }
+    });
+    List<Interval> ans = new LinkedList<>();
+    int start = intervals.get(0).start;
+    int end = intervals.get(0).end;
+    for (Interval interval : intervals) {
+        if (interval.start <= end) {
+            end = Math.max(interval.end, end);
+        } else {
+            ans.add(new Interval(start, end));
+            start = interval.start;
+            end = interval.end;
+        }
+    }
+    ans.add(new Interval(start, end));
+    return ans;
+}
+```
+
 ## **String**
 
 ### 问题：Longest Common Prefix
@@ -1192,7 +1256,7 @@ public List<String> generateParenthesis(int n) {
 }
 ```
 
-## Math
+## **Math**
 
 ### 问题：Plus One
 
@@ -1321,7 +1385,7 @@ public double myPow(double x, int n) {
 }
 ```
 
-## Tree
+## **Tree**
 
 ### 问题：Binary Tree Preorder Traversal
 
@@ -1806,7 +1870,7 @@ private List<TreeNode> buildSubTree(int start, int end) {
 }
 ```
 
-## BackTracking
+## **BackTracking**
 
 ### 问题：Subsets I，II
 
@@ -2147,7 +2211,7 @@ private void letterCombinations (List<String> list, String digits, String curr, 
 }
 ```
 
-## Dynamic Programming
+## **Dynamic Programming**
 
 ### 问题：Climbing Stairs
 
@@ -2411,7 +2475,7 @@ class NumMatrix {
 }
 ```
 
-## LinkedList
+## **LinkedList**
 
 ### 问题：Reverse Linked List I II
 
@@ -2772,7 +2836,186 @@ public ListNode mergeTwoLists(ListNode l1, ListNode l2){
 }
 ```
 
-## BFS & DFS
+## **Matrix**
+
+### Spiral Matrix
+
+题号：54
+
+自己的解法：模拟
+
+```java
+public List<Integer> spiralOrder(int[][] matrix) {
+    if (matrix.length == 0 || matrix[0].length == 0) return new ArrayList<>();
+
+    boolean[][] m = new boolean[matrix.length][matrix[0].length];
+    List<Integer> ans = new ArrayList<Integer>();
+    int row = matrix.length;
+    int col = matrix[0].length;
+    int nextrow = 0;
+    int nextcol = 0;
+    int direction = 0;
+    while (true) {
+        int i, j;
+        if (direction == 0) {
+            for (j = nextcol; j < col; j++) {
+                if (!m[nextrow][j]) {
+                    ans.add(matrix[nextrow][j]);
+                    m[nextrow][j] = true;
+                } else {
+                    break;
+                }
+            }
+            nextrow = nextrow + 1;
+            nextcol = j - 1;
+            direction = 1;
+        } else if (direction == 1) {
+            for (i = nextrow; i < row; i++) {
+                if (!m[i][nextcol]) {
+                    ans.add(matrix[i][nextcol]);
+                    m[i][nextcol] = true;
+                } else {
+                    break;
+                }
+            }
+            nextrow = i - 1;
+            nextcol = nextcol - 1;
+            direction = 2;
+        } else if (direction == 2) {
+            for (j = nextcol; j >= 0; j--) {
+                if (!m[nextrow][j]) {
+                    ans.add(matrix[nextrow][j]);
+                    m[nextrow][j] = true;
+                } else {
+                    break;
+                }
+            }
+            nextrow = nextrow - 1;
+            nextcol = j + 1;
+            direction = 3;
+        } else if (direction == 3) {
+            for (i = nextrow; i >= 0; i--) {
+                if (!m[i][nextcol]) {
+                    ans.add(matrix[i][nextcol]);
+                    m[i][nextcol] = true;
+                } else {
+                    break;
+                }
+            }
+            nextrow = i + 1;
+            nextcol = nextcol + 1;
+            direction = 0;
+        }
+
+        if (nextrow >= row || nextcol >= col ||
+                nextrow < 0 || nextcol < 0 ||
+                m[nextrow][nextcol]) break;
+
+    }
+    return ans;
+}
+```
+
+官方优化：
+
+```java
+public List<Integer> spiralOrder(int[][] matrix) {
+    List ans = new ArrayList();
+    if (matrix.length == 0) return ans;
+    int R = matrix.length, C = matrix[0].length;
+    boolean[][] seen = new boolean[R][C];
+    int[] dr = {0, 1, 0, -1};
+    int[] dc = {1, 0, -1, 0};
+    int r = 0, c = 0, di = 0;
+    for (int i = 0; i < R * C; i++) {
+        ans.add(matrix[r][c]);
+        seen[r][c] = true;
+        int cr = r + dr[di];
+        int cc = c + dc[di];
+        if (0 <= cr && cr < R && 0 <= cc && cc < C && !seen[cr][cc]){
+            r = cr;
+            c = cc;
+        } else {
+            di = (di + 1) % 4;
+            r += dr[di];
+            c += dc[di];
+        }
+    }
+    return ans;
+}
+```
+
+### 问题：Search a 2D matrix II
+
+题号：240
+
+思路1：暴力 beats 8.18%
+
+思路2：
+
+```java
+public boolean searchMatrix(int[][] matrix, int target) {
+    if (matrix == null || matrix.length == 0) return false;
+    if (matrix[0] == null || matrix[0].length == 0) return false;
+    int row = matrix.length - 1;
+    int col = 0;
+    // 从左下角开始移动
+    while (row >= 0 && col < matrix[0].length) {
+        if (matrix[row][col] == target) {
+            return true;
+        }
+
+        if (matrix[row][col] > target) {
+            row--;
+        } else {
+            col++;
+        }
+    }
+    return false;
+}
+```
+
+### 问题：Word Search
+
+题号：79
+
+思路：DFS
+
+```java
+public boolean exist(char[][] board, String word) {
+    if (board.length == 0 || board[0].length == 0) return false;
+    int row = board.length;
+    int col = board[0].length;
+    for (int i = 0; i < row; i++) {
+        for (int j = 0; j < col; j++) {
+            if (finder(board, i, j, word, 0)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+private boolean finder(char[][] board, int r, int c, String word, int strpos) {
+    if (strpos == word.length()) {
+        return true;
+    }
+    if (r < 0 || c < 0 || r >= board.length || c >= board[0].length) {
+        return false;
+    }
+    if (board[r][c] != word.charAt(strpos)) {
+        return false;
+    }
+    char record = board[r][c];
+    board[r][c] = '1';
+    boolean res = finder(board, r + 1, c, word, strpos+1) || finder(board, r - 1, c, word, strpos+1) ||
+            finder(board, r, c + 1, word, strpos+1) || finder(board, r, c - 1, word, strpos+1);
+    board[r][c] = record;
+    return res;
+}
+```
+
+## **BFS & DFS**
 
 ### 问题：Number of Islands
 
@@ -2931,5 +3174,478 @@ private void findIsland(Deque<PosPair> queue, char[][] grid, int m, int n) {
             queue.offerLast(new PosPair(i, j));
         }
     }
+}
+```
+
+## Stack & priorityQueue
+
+### 问题：Decode String
+
+题号：394
+
+```java
+public static String decodeString(String s) {
+    if (s.isEmpty()) {
+        return "";
+    }
+    String res = "";
+    Stack<Integer> numStack = new Stack<>();
+    Stack<String> strStack = new Stack<>();
+    int idx = 0;
+    while (idx < s.length()) {
+        if (Character.isDigit(s.charAt(idx))) {
+            int count = 0;
+            while (Character.isDigit(s.charAt(idx))) {
+                count = 10 * count + (s.charAt(idx) - '0');
+                idx++;
+            }
+            numStack.push(count);
+        } else if (s.charAt(idx) == '[') {
+            strStack.push(res);
+            res = "";
+            idx++;
+        } else if (s.charAt(idx) == ']') {
+            StringBuilder tmp = new StringBuilder(strStack.pop());
+            int times = numStack.pop();
+            for (int i = 0; i < times; i++) {
+                tmp.append(res);
+            }
+            res = tmp.toString();
+            idx++;
+        } else {
+            res += s.charAt(idx);
+            idx++;
+        }
+    }
+    return res;
+}
+```
+
+### 问题：Basic Calculator I II
+
+题号：224， 227
+
+思路：
+
+- 遇到 '(' 就把之前的结果和符号push进stack
+- 遇到')'就把 当前结果 * stack中的符号，再加上stack中之前的结果.
+
+```java
+public static int calculate(String s) {
+        int len = s.length();
+        int sign = 1;
+        int res = 0;
+        Stack<Integer> stack = new Stack<>();
+        for (int i = 0; i < len; i++) {
+            if (Character.isDigit(s.charAt(i))) {
+                int sum = s.charAt(i) - '0';
+                while (i + 1 < len && Character.isDigit(s.charAt(i + 1))) {
+                    sum = sum * 10 + s.charAt(i + 1) - '0';
+                    i++;
+                }
+                res += sum * sign;
+            } else if (s.charAt(i) == '+') {
+                sign = 1;
+            } else if (s.charAt(i) == '-') {
+                sign = -1;
+            } else if (s.charAt(i) == '(') {
+                stack.push(res);
+                stack.push(sign);
+                res = 0;
+                sign = 1;
+            } else if (s.charAt(i) == ')') {
+                res = res * stack.pop() + stack.pop();
+            }
+        }
+        return res;
+    }
+```
+
+```java
+public static int calculate2(String s) {
+    Stack<Integer> stack = new Stack<Integer>();
+    int num = 0;
+    int idx = 0;
+    int len = s.length();
+    char sign = '+';
+
+    while (idx < len) {
+        if (Character.isDigit(s.charAt(idx))) {
+            num = num * 10 + s.charAt(idx) - '0';
+        }
+        if (!Character.isDigit(s.charAt(idx)) && s.charAt(idx) != ' ' || idx == len - 1) {
+            if (sign == '-') {
+                stack.push(-num);
+            }
+            if (sign == '+') {
+                stack.push(num);
+            }
+            if (sign == '*') {
+                stack.push(stack.pop() * num);
+            }
+            if (sign == '/') {
+                stack.push(stack.pop() / num);
+            }
+            sign = s.charAt(idx);
+            num = 0;
+        }
+        idx++;
+    }
+    int res = 0;
+    for (int i : stack) {
+        res += i;
+    }
+    return res;
+}
+```
+
+### 问题：Kth Largest Element in an Array 数组中第k大的数
+
+题号：215
+
+思路1：排序
+
+```java
+public int findKthLargest(int[] nums, int k) {
+    Arrays.sort(nums);
+    return nums[nums.length - k];
+}
+```
+
+思路2：最小堆
+
+```java
+public static int findKthLargest(int[] nums, int k) {
+
+    final PriorityQueue<Integer> pq = new PriorityQueue<>();
+    for(int val : nums) {
+        // 不断向最小堆中添加元素
+        pq.offer(val);
+
+        if(pq.size() > k) {
+            // 超过堆允许的个数时，将最小的元素移除并调整堆，堆顶仍为最小元素
+            pq.poll();
+        }
+    }
+    // 堆顶即为第k大的数
+    return pq.peek();
+}
+```
+
+思路3：选择算法
+
+- 快速排序的切分保证了
+  - 所有左边的元素都不大于切分元素
+  - 所有右边的元素都不小于切分元素
+- 实际上切分元素的所处位置，就指定了其TopK特性，即切分元素位于第h个位置，那么切分元素就是数组中的Toph
+  
+算法思路：
+
+- 完成切分过程获得切分元素的位置`j`
+- 若`k>j`，则对切分元素的右半边数组进行切分
+- 若`k<j`，则对切分元素的左半边数组进行切分
+- 重复上述过程直到`k=j`
+
+```java
+public int findKthLargest2(int[] nums, int k) {
+    k = nums.length - k;
+    int lo = 0;
+    int hi = nums.length - 1;
+    while (lo < hi) {
+        final int j = partition(nums, lo, hi);
+        if (j < k) {
+            lo = j + 1;
+        } else if (j > k) {
+            hi = j - 1;
+        } else {
+            break;
+        }
+    }
+    return nums[k];
+}
+
+private int partition(int[] a, int lo, int hi) {
+    int i = lo;
+    int j = hi + 1;
+    while (true) {
+        while (i < hi && a[++i] < a[lo]);
+        while (j > lo && a[lo] < a[--j]);
+        if (i >= j) {
+            break;
+        }
+        exch(a, i, j);
+    }
+    exch(a, lo, j);
+    return j;
+}
+private void exch(int[] a, int i, int j) {
+    final int tmp = a[i];
+    a[i] = a[j];
+    a[j] = tmp;
+}
+```
+
+### 问题：Top K Frequent Elements
+
+题号：347
+
+思路一：计次
+
+```java
+public static List<Integer> topKFrequent(int[] nums, int k) {
+    if (nums.length == 0) {
+        return new ArrayList<>();
+    }
+    Map<Integer, Integer> map = new HashMap<>();
+    for (int i = 0; i < nums.length; i++) {
+        map.put(n, map.getOrDefault(n, 0) + 1);
+    }
+    List<Map.Entry<Integer, Integer>> list = new ArrayList<>(map.entrySet());
+    Collections.sort(list, new Comparator<Map.Entry<Integer, Integer>>() {
+        @Override
+        public int compare(Map.Entry<Integer, Integer> o1, Map.Entry<Integer, Integer> o2) {
+            return o2.getValue() - o1.getValue();
+        }
+    });
+    List<Integer> ans = new ArrayList<>();
+    for (Map.Entry<Integer, Integer> t : list) {
+        if (k != 0) {
+            ans.add(t.getKey());
+            k--;
+        }
+    }
+    return ans;
+}
+```
+
+思路二：桶排序
+
+```java
+public List<Integer> topKFrequent(int[] nums, int k) {
+
+    List<Integer>[] bucket = new List[nums.length + 1];
+    Map<Integer, Integer> frequencyMap = new HashMap<Integer, Integer>();
+
+    for (int n : nums) {
+        frequencyMap.put(n, frequencyMap.getOrDefault(n, 0) + 1);
+    }
+
+    for (int key : frequencyMap.keySet()) {
+        // 插入桶中，桶按照次数划分
+        int frequency = frequencyMap.get(key);
+        if (bucket[frequency] == null) {
+            bucket[frequency] = new ArrayList<>();
+        }
+        bucket[frequency].add(key);
+    }
+
+    List<Integer> res = new ArrayList<>();
+
+    for (int pos = bucket.length - 1; pos >= 0 && res.size() < k; pos--) {
+        if (bucket[pos] != null) {
+            res.addAll(bucket[pos]);
+        }
+    }
+    return res;
+}
+```
+
+## **Bit Manipulation**
+
+### Single Number I II III
+
+题号：136
+
+```java
+public int singleNumber(int[] nums) {
+    int mask = 0;
+    for(int num : nums) mask ^= num;
+    return mask;
+}
+```
+
+题号：137 出现三次
+
+思路：
+
+a, b初始状态　　 :   0   0
+
+第一次碰见某个数x：   0   x（把x记录在b中）
+
+第二次碰见某个数x：   x   0（把x记录在a中）
+
+第三次碰见某个数x：   0   0（把a和b都清空，可以处理其他数）
+
+设计出一种变换的方法让a和b按照上述变换规则，进行转换。
+
+- b=0时碰到x，就变成x；
+- b=x时再碰到x，就变成0，这个不就是异或吗？所以我们也许可以设计`b = b xor x`
+- 但是当`b = 0`时再再碰到x，这时候b还是要为0，但这时候不同的是`a = x`。所以我们可以设计成：`b = (b xor x) & ~a`,  `a = (a xor x) & ~b`
+
+```java
+public int singleNumber(int[] nums) {
+    int ones = 0,twos = 0;
+    for (int num : nums) {
+        ones = (ones ^ num) & (~twos);
+        twos = (twos ^ num) & (~ones);
+    }
+    return ones;
+}
+```
+
+题号：260
+
+[思路](https://blog.csdn.net/camellhf/article/details/52594524)
+
+```java
+public int[] singleNumber(int[] nums) {
+    // Pass 1 :
+    // Get the XOR of the two numbers we need to find
+    int diff = 0;
+    for (int num : nums) {
+        diff ^= num;
+    }
+    // Get its last set bit
+    diff &= -diff;
+
+    // Pass 2 :
+    int[] rets = {0, 0}; // this array stores the two numbers we will return
+    for (int num : nums)
+    {
+        if ((num & diff) == 0) // the bit is not set
+        {
+            rets[0] ^= num;
+        }
+        else // the bit is set
+        {
+            rets[1] ^= num;
+        }
+    }
+    return rets;
+}
+```
+
+### Number of 1 Bits
+
+题号：191
+
+```java
+public int hammingWeight(int n) {
+    int bits = 0;
+    int mask = 1;
+    for (int i = 0; i < 32; i++) {
+        if ((n & mask) != 0) {
+            bits++;
+        }
+        mask <<= 1;
+    }
+    return bits;
+}
+```
+
+### Reverse Bit
+
+题号：190
+
+```java
+public int reverseBits(int n) {
+    int result = 0;
+    for (int i = 0; i < 32; i++) {
+        result <<= 1;
+        if ((n & 1) == 1) result++;
+        n >>= 1;
+    }
+    return result;
+}
+```
+
+### Missing Number
+
+题号：268
+
+[思路：Approach 3](https://leetcode.com/problems/missing-number/solution/)
+
+```java
+public int missingNumber(int[] nums) {
+    int missing = nums.length;
+    for (int i = 0; i < nums.length; i++) {
+        missing ^= i ^ nums[i];
+    }
+    return missing;
+}
+```
+
+### Bitwise AND of Numbers Range
+
+题号：201
+
+思路：
+
+- 数组的数字是连续的，那么m,n范围内的二进制表示的末尾相同位置一定会出现不同的0,1.我们只要找出m,n的做左边起的最长相同的二进制头部即可
+
+```java
+public int rangeBitwiseAnd(int m, int n) {
+    int count = 0;
+    while (m != n) {
+        m >>= 1;
+        n >>= 1;
+        count++;
+    }
+    return m <<= count;
+}
+```
+
+## **Topological Sort**
+
+### Course Schedule
+
+题号：207 210
+
+自己的实现 拓扑排序
+
+```java
+public boolean canFinish(int numCourses, int[][] prerequisites) {
+    int[] in = new int[numCourses];
+    int[][] m = buildGraph(numCourses, prerequisites, in);
+    Deque<Integer> deque = new ArrayDeque<>();
+    int count = 0;
+
+    for (int i = 0; i < in.length; i++) {
+        if (in[i] == 0) {
+            deque.offer(i);
+            count++;
+        }
+    }
+
+    if (deque.isEmpty()) {
+        return false;
+    }
+
+    while (!deque.isEmpty()) {
+        int v = deque.poll();
+        for (int i = 0; i < m[0].length; i++) {
+            if (m[v][i] == 1) {
+                in[i]--;
+                if (in[i] == 0) {
+                    deque.offer(i);
+                    count++;
+                }
+                m[v][i] = 0;
+            }
+        }
+    }
+
+    return count == numCourses;
+}
+
+private int[][] buildGraph(int n, int[][] graph, int[] in) {
+    int[][] m = new int[n][n];
+    for (int i = 0; i < graph.length; i++) {
+        int start = graph[i][0];
+        int end = graph[i][1];
+        m[start][end] = 1;
+        in[end]++;
+    }
+    return m;
 }
 ```

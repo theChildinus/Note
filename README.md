@@ -1,27 +1,23 @@
 # README 读书笔记
 
-## C++ Primer
+## :ox: [C++ Primer](/LearnC++.h)
 
-[这里](/LearnC++.h)
+## :shaved_ice: [编程珠玑](/编程珠玑.md)
 
-## 编程珠玑
+## :elephant: [Hadoop权威指南](/Hadoop权威指南.md)
 
-[这里](/编程珠玑.md)
+## :penguin: [折腾Linux 遇到的坑](/fixLinux.md)
 
-## c++沉思录
+## :black_nib: [LeetCode](/LeetCode.md)
 
-[这里](/c++沉思录.md)
+## :meat_on_bone: [琐碎的知识点](/knowledge.md)
 
-## Hadoop权威指南
-
-[这里](/Hadoop权威指南.md)
-
-## 折腾Linux 遇到的坑
-
-[这里](/fixLinux.md)
-
-## 刷题
-
-[LeetCode 这里](/LeetCode.md)
+## :interrobang: [问题](/Question.md)
 
 选择题好难做 / w \
+
+- java基础
+- 数据结构
+- JVM
+- 并发
+- Spring，Hadoop
