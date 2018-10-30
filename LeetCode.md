@@ -18,6 +18,7 @@ public int removeElement(int[] nums, int val) {
     for (int j = 0; j < nums.length; j++) {
         if (nums[j] != val) {
             nums[i] = nums[j];
+            i++;
         }
     }
     return i;
@@ -843,9 +844,9 @@ public double findMedianSortedArrays(int[] nums1, int[] nums2) {
 }
 ```
 
-### 问题：Merge Intervals
+### 问题：Merge/Insert Intervals
 
-题号：56
+题号：56, 57
 
 ```java
 public List<Interval> merge(List<Interval> intervals) {
@@ -870,6 +871,39 @@ public List<Interval> merge(List<Interval> intervals) {
     }
     ans.add(new Interval(start, end));
     return ans;
+}
+```
+
+### 问题：Maximum Subarray
+
+题号：53
+
+思路：顺序相加求和，如果和比当前元素小，从当前元素开始求和，用result保存每次求和结果中的最大值
+
+```java
+public int maxSubArray(int[] nums) {
+    int result = Integer.MIN_VALUE;
+    int sum = 0;
+    for (int i = 0; i < nums.length; i++) {
+        sum = Math.max(sum + nums[i], nums[i]);
+        result = Math.max(result, sum);
+    }
+    return result;
+}
+```
+
+思路2：DP
+
+```java
+public int maxSubArray(int[] nums) {
+    int[] dp = new int[nums.length];
+    dp[0] = 0;
+    int max = 0;
+    for (int i = 1; i < nums.length; i++) {
+        dp[i] = nums[i] + (dp[i - 1] > 0 ? dp[i - 1] : 0);
+        max = Math.max(dp[i], max);
+    }
+    return max;
 }
 ```
 
@@ -3015,6 +3049,36 @@ private boolean finder(char[][] board, int r, int c, String word, int strpos) {
 }
 ```
 
+### 问题：Rotate Image
+
+题号：48
+
+思路：先按照上三角或者下三角交换元素，再按照列交换元素
+
+```java
+public void rotate(int[][] matrix) {
+    if (matrix.length == 0 || matrix[0].length == 0) {
+        return;
+    }
+    int n = matrix[0].length;
+    for (int i = 0; i < n; i++) {
+        for (int j = i; j < n; j++) {
+            int tmp = matrix[i][j];
+            matrix[i][j] = matrix[j][i];
+            matrix[j][i] = tmp;
+        }
+    }
+
+    for (int j = 0; j < n / 2; j++) {
+        for (int i = 0; i < n; i++) {
+            int tmp = matrix[i][j];
+            matrix[i][j] = matrix[i][n - 1 - j];
+            matrix[i][n - 1 - j] = tmp;
+        }
+    }
+}
+```
+
 ## **BFS & DFS**
 
 ### 问题：Number of Islands
@@ -3592,6 +3656,125 @@ public int rangeBitwiseAnd(int m, int n) {
         count++;
     }
     return m <<= count;
+}
+```
+
+### 问题：3Sum
+
+题号：15
+
+思路：
+
+- 选择当前元素为target
+- 以target后一元素为left，数组最后一个元素为right
+- 移动left，right 满足条件保存下来
+- 满足条件的相同元素跳过
+
+```java
+public List<List<Integer>> threeSum(int[] nums) {
+    if (nums.length == 0) return new ArrayList<>();
+
+    Arrays.sort(nums);
+    List<List<Integer>> ans = new ArrayList<>();
+    int len = nums.length;
+    for (int i = 0; i < len - 2; i++) {
+        if (nums[i] > 0) break;
+        if (i > 0 && nums[i] == nums[i - 1]) continue;
+        int target = nums[i];
+        int left = i + 1;
+        int right = nums.length - 1;
+        while (left < right) {
+            if (nums[left] + nums[right] + target == 0) {
+                List<Integer> tmp = new ArrayList<>();
+                tmp.add(target);
+                tmp.add(nums[left]);
+                tmp.add(nums[right]);
+                ans.add(tmp);
+                while (left < right && nums[left] == nums[left + 1]) left++;
+                while (right > left && nums[right] == nums[right - 1]) right--;
+                left++;
+                right--;
+            }
+            else if (nums[left] + nums[right] + target < 0) {
+                left++;
+            } else {
+                right--;
+            }
+        }
+    }
+    return ans;
+}
+```
+
+### 问题：4Sum
+
+题号：18
+
+```java
+public List<List<Integer>> fourSum(int[] nums, int target) {
+    if (nums.length == 0) return new ArrayList<>();
+    Arrays.sort(nums);
+    List<List<Integer>> ans = new ArrayList<>();
+    for (int i = 0; i < nums.length - 3; i++) {
+        // 由于target可以是大于零的数，所有这里删掉 if(nums[i] > 0) break;
+        if (i > 0 && nums[i] == nums[i - 1]) continue;
+        for (int j = i + 1; j < nums.length - 2; j++) {
+            // 对于第二个元素也许要加判断是否重复
+            if (j > i + 1 && nums[j] == nums[j - 1]) continue;
+            int left = j + 1;
+            int right = nums.length - 1;
+            while (left < right) {
+                int sum = nums[left] + nums[right] + nums[i] + nums[j];
+                if (sum == target) {
+                    List<Integer> tmp = new ArrayList<>();
+                    tmp.add(nums[i]); tmp.add(nums[j]); tmp.add(nums[left]); tmp.add(nums[right]);
+                    ans.add(tmp);
+                    while (left < right && nums[left] == nums[left + 1]) left++;
+                    while (left < right && nums[right] == nums[right - 1]) right--;
+                    left++;
+                    right--;
+                } else if (sum < target) {
+                    left++;
+                } else {
+                    right--;
+                }
+            }
+        }
+    }
+    return ans;
+}
+```
+
+### 问题：3Sum Closest
+
+题号：16
+
+```java
+public int threeSumClosest(int[] nums, int target) {
+    if (nums.length == 0) return 0;
+    Arrays.sort(nums);
+    int sum = nums[0] + nums[1] + nums[2];
+    int dist = Math.abs(sum - target);
+    for (int i = 0; i < nums.length - 2; i++) {
+        int left = i + 1;
+        int right = nums.length - 1;
+        while (left < right) {
+            int cursum = nums[i] + nums[left] + nums[right];
+            int curdist = Math.abs(cursum - target);
+            if (curdist < dist) {
+                sum = cursum;
+                dist = curdist;
+            }
+            if (target < cursum) {
+                right--;
+            } else if (target > cursum) {
+                left++;
+            } else {
+                return cursum;
+            }
+        }
+    }
+    return sum;
 }
 ```
 
