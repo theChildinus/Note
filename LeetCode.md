@@ -33,7 +33,7 @@ public int removeDuplicates(int[] nums) {
     }
 
     int n = 1;
-    for (int i  = 1; i < nums.length; i++) {
+    for (int i = 1; i < nums.length; i++) {
         if (nums[i] != nums[i - 1]) {
             nums[n] = nums[i];
             n++;
@@ -72,9 +72,55 @@ public int removeDuplicates(int[] nums) {
 public int removeDuplicates(int[] nums) {
     int i = 0;
     for (int n : nums)
+    // i < 2 用于处理数组元素少于等于2的情况
         if (i < 2 || n > nums[i-2])
             nums[i++] = n;
     return i;
+}
+```
+
+### 问题：Find All Duplicates in an Array
+
+思路一：将元素交换到相应的位置上
+
+```java
+public List<Integer> findDuplicates(int[] nums) {
+    if (nums.length == 0) {
+        return new ArrayList<>();
+    }
+    List<Integer> ans = new ArrayList<>();
+    int i = 0;
+    while (i < nums.length) {
+        if (nums[nums[i] - 1] != nums[i]) {
+            int tmp = nums[nums[i] - 1];
+            nums[nums[i] - 1] = nums[i];
+            nums[i] = tmp;
+        } else {
+            i++;
+        }
+    }
+    for (int j = 0; j < nums.length; j++) {
+        if (nums[j] != j + 1) {
+            ans.add(nums[j]);
+        }
+    }
+    return ans;
+}
+```
+
+思路2：当找到数字i时，将位置i-1处的数字翻转为负数。如果位置i-1处的数字已经为负数，则i是出现两次的数字。
+
+```java
+public List<Integer> findDuplicates(int[] nums) {
+    List<Integer> result = new ArrayList<Integer>();
+    for(int i = 0; i < nums.length; i++){
+        int index = Math.abs(nums[i]) - 1;
+        if(nums[index] > 0)
+            nums[index] = -nums[index];
+        else
+            result.add(Math.abs(nums[i]));
+    }
+    return result;
 }
 ```
 
@@ -101,7 +147,7 @@ public void rotate(int[] nums, int k) {
     k %= nums.length;
     reverse(nums, 0, nums.length - 1);
     reverse(nums, 0, k - 1);
-    reverse(nums, k, nums.lenght - 1);
+    reverse(nums, k, nums.length - 1);
 }
 ```
 
@@ -110,7 +156,7 @@ public void rotate(int[] nums, int k) {
 public void rotate(int[] nums, int k) {
     k %= nums.length;
     reverse(nums, 0, k - 1);
-    reverse(nums, k, nums.lenght - 1);
+    reverse(nums, k, nums.length - 1);
     reverse(nums, 0, nums.length - 1);
 }
 ```
@@ -124,7 +170,9 @@ public void rotate(int[] nums, int k) {
 ```java
     public int firstMissingPositive(int[] nums) {
         for (int i = 0; i < nums.length; i++) {
+            // nums[nums[i] - 1] 中，nums[i] - 1 为该元素应该存放的下标，同时处理了重复的情况
             while (nums[i] > 0 && nums[i] <= nums.length && nums[i] != nums[nums[i] - 1]) {
+                // 将数字1 放到下标为0的位置，依此类推
                 int pos = nums[i] - 1;
                 int tmp = nums[i];
                 nums[i] = nums[pos];
@@ -907,6 +955,74 @@ public int maxSubArray(int[] nums) {
 }
 ```
 
+### 问题：Search in Rotated Sorted Array I II
+
+题号：33 I：无重复元素
+
+```java
+public int search(int[] nums, int target) {
+    if (nums.length == 0) {
+        return -1;
+    }
+    int lo = 0;
+    int hi = nums.length - 1;
+    while (lo < hi) {
+        int mid = (lo + hi) / 2;
+        if (nums[mid] == target) return mid;
+        // 这里判断的是 nums[low] 和 nums[mid]，而不是和target比较
+        // nums[start..mid] is sorted
+        if (nums[lo] <= nums[mid]) {
+            if (target >= nums[lo] && target < nums[mid]) {
+                hi = mid - 1;
+            } else {
+                lo = mid + 1;
+            }
+        } else { // nums[mid..end] is sorted
+            if (target > nums[mid] && target <= nums[hi]) {
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+    }
+    return nums[lo] == target ? lo : -1;
+}
+```
+
+题号：81 II：含有重复元素
+
+```java
+public boolean search(int[] nums, int target) {
+    if (nums.length == 0) return false;
+    int low = 0;
+    int high = nums.length - 1;
+    while (low < high) {
+        int mid = (low + high) / 2;
+        if (nums[mid] == target) {
+            return true;
+        }
+        if (nums[low] < nums[mid]) {
+            if (target >= nums[low] && target < nums[mid]) {
+                high = mid - 1;
+            } else {
+                low = mid + 1;
+            }
+        } else if (nums[low] > nums[mid]) {
+            if (target > nums[mid] && target <= nums[high]) {
+                low = mid + 1;
+            } else {
+                high = mid - 1;
+            }
+        } else if (nums[low] == nums[mid]) {
+            // 根据题意，较大的元素只可能出现在前半部分，不可能存在后半部分
+            // II 与 I的主要区别在此，最坏情况O(n)
+            low++;
+        }
+    }
+    return nums[low] == target;
+}
+```
+
 ## **String**
 
 ### 问题：Longest Common Prefix
@@ -1416,6 +1532,16 @@ public double myPow(double x, int n) {
         tmp = tmp * tmp;
     }
     return reverse ? 1.0 / res : res;
+}
+```
+
+### 问题 Power of Four
+
+```java
+public boolean isPowerOfFour(int num) {
+    if(num == 0) return false;
+    if(num == 1) return true;
+    return (num % 4 == 0) && isPowerOfFour(num / 4);
 }
 ```
 
@@ -2242,6 +2368,85 @@ private void letterCombinations (List<String> list, String digits, String curr, 
         //进入下一层
         letterCombinations(list,digits,next,index+1,table);
     }
+}
+```
+
+### 问题：Subtree of another tree
+
+题号：572
+
+```java
+public boolean isSubtree(TreeNode s, TreeNode t) {
+    if(s==null)
+        return false;
+    else {
+        if(s.val == t.val && isSameTree(s, t))
+            return true;
+        else
+            return isSubtree(s.left, t) || isSubtree(s.right, t);
+    }
+}
+
+public boolean isSameTree(TreeNode n1, TreeNode n2) {
+    if(n1==null && n2==null)
+        return true;
+    else if(n1==null || n2==null)
+        return false;
+    else {
+        return  n1.val==n2.val &&
+                isSameTree(n1.left, n2.left) && 
+                isSameTree(n1.right, n2.right);
+    }
+}
+```
+
+### 问题：Flatten Binary Tree to Linked List
+
+题号：114
+
+思路：先找到最左子节点left，其父节点为father，father的右节点为right，先断开father和right，将left连到father的右侧，原left置null，right连接到新right右侧
+
+```txt
+     1
+    / \
+   2   5
+  / \   \
+ 3   4   6
+
+     1
+    / \
+   2   5
+    \   \
+     3   6
+      \
+       4
+
+   1
+    \
+     2
+      \
+       3
+        \
+         4
+          \
+           5
+            \
+             6
+```
+
+```java
+public void flatten(TreeNode root) {
+    if (root == null) return;
+    if (root.left != null) flatten(root.left);
+    if (root.right != null) flatten(root.right);
+
+    TreeNode tmp = root.right;
+    root.right = root.left;
+    root.left = null;
+    while (root.right != null) {
+        root = root.right;
+    }
+    root.right = tmp;
 }
 ```
 
