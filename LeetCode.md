@@ -533,7 +533,7 @@ public int jump(int[] nums) {
 
 !!!在每次循环内，要更新所有状态机中的状态，可以在某一天卖出之后，买入再卖出
 
-题号：121，122，123，188，309
+题号：121，122，123，188，309,714
 
 121:
 思路：只需要遍历一遍数组，用一个变量记录遍历过数中的最小值，然后每次计算当前值和这个最小值之间的差值最为利润，然后每次选较大的利润来更新。当遍历完成后当前利润即为所求
@@ -632,21 +632,48 @@ public int maxProfit(int k, int[] prices) {
 - 在第i天卖一支股票总的利润 ＝ 第(i-1)天买股票剩下的最大利润＋当前股票的价格
 
 ```java
-class Solution {
-    public int maxProfit(int[] prices) {
-        int n = prices.length;
-        if (n <= 1) return 0;
-        int[] buy = new int[n];
-        int[] sell = new int[n];
-        buy[0] = -prices[0];
-        buy[1] = Math.max(-prices[0], -prices[1]);
-        sell[1] = Math.max(0, prices[1] - prices[0]);
-        for (int i = 2; i < n; i++){
-            buy[i] = Math.max(buy[i - 1], sell[i - 2] - prices[i]);
-            sell[i] = Math.max(sell[i - 1], buy[i - 1] + prices[i]);
-        }
-        return sell[n - 1];
+public int maxProfit(int[] prices) {
+    int n = prices.length;
+    if (n <= 1) return 0;
+    int[] buy = new int[n];
+    int[] sell = new int[n];
+    buy[0] = -prices[0];
+    buy[1] = Math.max(-prices[0], -prices[1]);
+    sell[1] = Math.max(0, prices[1] - prices[0]);
+    for (int i = 2; i < n; i++){
+        buy[i] = Math.max(buy[i - 1], sell[i - 2] - prices[i]);
+        sell[i] = Math.max(sell[i - 1], buy[i - 1] + prices[i]);
     }
+    return sell[n - 1];
+}
+```
+
+714:
+
+```txt
+Input: prices = [1, 3, 2, 8, 4, 9], fee = 2
+Output: 8
+Explanation: The maximum profit can be achieved by:
+- Buying at prices[0] = 1
+- Selling at prices[3] = 8
+- Buying at prices[4] = 4
+- Selling at prices[5] = 9
+The total profit is ((8 - 1) - 2) + ((9 - 4) - 2) = 8.
+```
+
+```java
+public int maxProfit(int[] prices, int fee) {
+    if (prices.length < 2) {
+        return 0;
+    }
+
+    int buy = -prices[0];
+    int sold = 0;
+    for (int i = 1; i < prices.length; i++) {
+        buy = Math.max(buy, sold - prices[i]);
+        sold = Math.max(sold, buy + prices[i] - fee);
+    }
+    return sold;
 }
 ```
 
@@ -1406,6 +1433,176 @@ public List<String> generateParenthesis(int n) {
 }
 ```
 
+### 问题：Find All Anagrams in a String
+
+题号：438，76
+
+```txt
+438
+Input:
+s: "cbaebabacd" p: "abc"
+
+Output:
+[0, 6]
+
+Explanation:
+The substring with start index = 0 is "cba", which is an anagram of "abc".
+The substring with start index = 6 is "bac", which is an anagram of "abc".
+```
+
+自己的思路：在s中依次向后查找p长度的子串，比较子串和p是否由相同的元素构成
+
+Discuss：滑动窗口算法 [算法模板](https://leetcode.com/problems/minimum-window-substring/discuss/26808/Here-is-a-10-line-template-that-can-solve-most-'substring'-problems)
+
+```java
+public List<Integer> findAnagrams(String s, String p) {
+    List<Integer> list = new ArrayList<>();
+    if (s == null || s.length() == 0 || p == null || p.length() == 0) return list;
+    int[] hash = new int[256]; //character hash
+    //record each character in p to hash
+    for (char c : p.toCharArray()) {
+        hash[c]++;
+    }
+    //two points, initialize count to p's length
+    int left = 0, right = 0, count = p.length();
+    while (right < s.length()) {
+        //move right everytime, if the character exists in p's hash, decrease the count
+        //current hash value >= 1 means the character is existing in p
+        if (hash[s.charAt(right++)]-- >= 1) count--;
+
+        //when the count is down to 0, means we found the right anagram
+        //then add window's left to result list
+        if (count == 0) list.add(left);
+
+        //if we find the window's size equals to p, then we have to move left (narrow the window) to find the new match window
+        //++ to reset the hash because we kicked out the left
+        //only increase the count if the character is in p
+        //the count >= 0 indicate it was original in the hash, cuz it won't go below 0
+        // 维护窗口大小为 p.length()
+        if (right - left == p.length() && hash[s.charAt(left++)]++ >= 0) count++;
+    }
+    return list;
+}
+```
+
+```txt
+76 找到最小包含T的子串
+Input: S = "ADOBECODEBANC", T = "ABC"
+Output: "BANC"
+```
+
+```java
+public String minWindow(String s, String t) {
+    if (s.length() == 0 || s == null || t.length() == 0 || t == null) return "";
+    int left = 0; int right = 0; int count = t.length();
+    int head = 0;
+    int[] hash = new int[128];
+    String ans = "";
+    int windowSize = Integer.MAX_VALUE;
+    for (char c : t.toCharArray()) {
+        hash[c]++;
+    }
+
+    while (right < s.length()) {
+        if (hash[s.charAt(right++)]-- >= 1) count--;
+         // 这里使用循环的目的是让left快速指向子串的开头位置,且保持right不移动，让s.charAt(left)包含在t中
+        while (count == 0) {
+            if (right - left < windowSize) {
+                head = left;
+                windowSize = right - head;
+            }
+            if (hash[s.charAt(left++)]++ == 0) count++;
+            // 此时left已指向下一个位置
+        }
+    }
+    return windowSize == Integer.MAX_VALUE ? "" : s.substring(head, head + windowSize);
+}
+```
+
+模板：
+
+```java
+int findSubstring(string s){
+        int[] map = new int[128];
+        int counter; // check whether the substring is valid
+        int begin=0, end=0; //two pointers, one point to tail and one  head
+        int d; //the length of substring
+
+        for() { /* initialize the hash map here */ }
+
+        while(end<s.length()){
+
+            if(map[s[end++]]-- ?){  /* modify counter here */ }
+
+            while(/* counter condition */){
+
+                 /* update d here if finding minimum*/
+
+                //increase begin to make it invalid/valid again
+
+                if(map[s[begin++]]++ ?){ /*modify counter here*/ }
+            }  
+
+            /* update d here if finding maximum*/
+        }
+        return d;
+  }
+```
+
+### 问题：Longest Substring Without Repeating Characters
+
+题号：3
+
+```txt
+Example 1:
+
+Input: "abcabcbb"
+Output: 3 
+Explanation: The answer is "abc", with the length of 3. 
+Example 2:
+
+Input: "bbbbb"
+Output: 1
+Explanation: The answer is "b", with the length of 1.
+Example 3:
+
+Input: "pwwkew"
+Output: 3
+Explanation: The answer is "wke", with the length of 3. 
+             Note that the answer must be a substring, "pwke" is a subsequence and not a substring.
+```
+
+```java
+public int lengthOfLongestSubstring(String s) {
+    if (s == null || s.length() == 0) {
+        return 0;
+    }
+    int left = 0; int right = 0; int count = 0;
+    int maxLen = Integer.MIN_VALUE;
+    int[] hash = new int[128];
+
+    //这里没有模式串，不做计数
+
+    while (right < s.length()) {
+        // 先对当前元素计数
+        char c1 = s.charAt(right++);
+        hash[c1]++;
+        // 元素如果第二次出现，count++
+        if (hash[c1] > 1) count++;
+
+        while (count > 0) {
+            char c2 = s.charAt(left++);
+            // 如果left所指元素是重复元素，left向后移动
+            if (hash[c2] > 1) count--;
+            hash[c2]--;
+        }
+        // 外层比较最大值，内层比较最小值
+        maxLen = Math.max(maxLen, right - left);
+    }
+    return maxLen == Integer.MIN_VALUE ? 0 : maxLen;
+}
+```
+
 ## **Math**
 
 ### 问题：Plus One
@@ -2030,6 +2227,85 @@ private List<TreeNode> buildSubTree(int start, int end) {
 }
 ```
 
+### 问题：Subtree of another tree
+
+题号：572
+
+```java
+public boolean isSubtree(TreeNode s, TreeNode t) {
+    if(s==null)
+        return false;
+    else {
+        if(s.val == t.val && isSameTree(s, t))
+            return true;
+        else
+            return isSubtree(s.left, t) || isSubtree(s.right, t);
+    }
+}
+
+public boolean isSameTree(TreeNode n1, TreeNode n2) {
+    if(n1==null && n2==null)
+        return true;
+    else if(n1==null || n2==null)
+        return false;
+    else {
+        return  n1.val==n2.val &&
+                isSameTree(n1.left, n2.left) && 
+                isSameTree(n1.right, n2.right);
+    }
+}
+```
+
+### 问题：Flatten Binary Tree to Linked List
+
+题号：114
+
+思路：先找到最左子节点left，其父节点为father，father的右节点为right，先断开father和right，将left连到father的右侧，原left置null，right连接到新right右侧
+
+```txt
+     1
+    / \
+   2   5
+  / \   \
+ 3   4   6
+
+     1
+    / \
+   2   5
+    \   \
+     3   6
+      \
+       4
+
+   1
+    \
+     2
+      \
+       3
+        \
+         4
+          \
+           5
+            \
+             6
+```
+
+```java
+public void flatten(TreeNode root) {
+    if (root == null) return;
+    if (root.left != null) flatten(root.left);
+    if (root.right != null) flatten(root.right);
+
+    TreeNode tmp = root.right;
+    root.right = root.left;
+    root.left = null;
+    while (root.right != null) {
+        root = root.right;
+    }
+    root.right = tmp;
+}
+```
+
 ## **BackTracking**
 
 ### 问题：Subsets I，II
@@ -2199,6 +2475,51 @@ public void combineBackTrack3(List<List<Integer>> ans, List<Integer> tmplist, in
 }
 ```
 
+### 问题：All Paths From Source to Target
+
+题号：797
+
+```txt
+Example:
+Input: [[1,2], [3], [3], []] 这里 graph[0] 表示 0->1， 0->2 , graph[1] 表示 2->3, graph[2] 表示 2->3
+Output: [[0,1,3],[0,2,3]]
+Explanation: The graph looks like this:
+0--->1
+|    |
+v    v
+2--->3
+There are two paths: 0 -> 1 -> 3 and 0 -> 2 -> 3.
+```
+
+思路：回溯，在回溯模板的基础上略作修改
+
+```java
+public List<List<Integer>> allPathsSourceTarget(int[][] graph) {
+    if (graph.length == 0) {
+        return new ArrayList<>();
+    }
+    List<List<Integer>> ans = new ArrayList<>();
+    List<Integer> tmp = new ArrayList<>();
+    tmp.add(0);
+    helper(ans, tmp, graph, 0);
+    return ans;
+}
+
+private void helper(List<List<Integer>> ans, List<Integer> tmp, int[][] graph, int cur) {
+    if (graph[cur].length == 0) {
+        ans.add(new ArrayList<>(tmp));
+        return;
+    }
+
+    for (int j = 0; j < graph[cur].length; j++) {
+        tmp.add(graph[cur][j]);
+        // 为达到深度遍历的效果，cur参数 不再传入 cur+1，而为下一个连接的节点graph[cur][j]
+        helper(ans, tmp, graph, graph[cur][j]);
+        tmp.remove(tmp.size() - 1);
+    }
+}
+```
+
 ### 问题：Permutations 全排列 I II
 
 题号：46 47 31
@@ -2298,6 +2619,39 @@ private void swap(int[] nums, int i, int j) {
 }
 ```
 
+### 问题：Increasing Subsequences
+
+题号：491
+
+```txt
+Input: [4, 6, 7, 7]
+Output: [[4, 6], [4, 7], [4, 6, 7], [4, 6, 7, 7], [6, 7], [6, 7, 7], [7,7], [4,7,7]]
+```
+
+```java
+public List<List<Integer>> findSubsequences(int[] nums) {
+    Set<List<Integer>> set = new HashSet<>();
+    List<Integer> tmplist = new ArrayList<>();
+    helper(set, tmplist, 0, nums);
+    List<List<Integer>> ans = new ArrayList<>(set);
+    return ans;
+}
+
+private void helper(Set<List<Integer>> set, List<Integer> list, int start, int[] nums) {
+    if (list.size() >= 2) {
+        set.add(new ArrayList<>(list));    
+    }
+
+    for (int i = start; i < nums.length; i++) {
+        if (list.size() == 0 || list.get(list.size() - 1) <= nums[i]) {
+            list.add(nums[i]);
+            helper(set, list, i + 1, nums);
+            list.remove(list.size() - 1);
+        }
+    }
+}
+```
+
 ### 问题：Letter Combinations of a Phone Number
 
 题号：17
@@ -2368,85 +2722,6 @@ private void letterCombinations (List<String> list, String digits, String curr, 
         //进入下一层
         letterCombinations(list,digits,next,index+1,table);
     }
-}
-```
-
-### 问题：Subtree of another tree
-
-题号：572
-
-```java
-public boolean isSubtree(TreeNode s, TreeNode t) {
-    if(s==null)
-        return false;
-    else {
-        if(s.val == t.val && isSameTree(s, t))
-            return true;
-        else
-            return isSubtree(s.left, t) || isSubtree(s.right, t);
-    }
-}
-
-public boolean isSameTree(TreeNode n1, TreeNode n2) {
-    if(n1==null && n2==null)
-        return true;
-    else if(n1==null || n2==null)
-        return false;
-    else {
-        return  n1.val==n2.val &&
-                isSameTree(n1.left, n2.left) && 
-                isSameTree(n1.right, n2.right);
-    }
-}
-```
-
-### 问题：Flatten Binary Tree to Linked List
-
-题号：114
-
-思路：先找到最左子节点left，其父节点为father，father的右节点为right，先断开father和right，将left连到father的右侧，原left置null，right连接到新right右侧
-
-```txt
-     1
-    / \
-   2   5
-  / \   \
- 3   4   6
-
-     1
-    / \
-   2   5
-    \   \
-     3   6
-      \
-       4
-
-   1
-    \
-     2
-      \
-       3
-        \
-         4
-          \
-           5
-            \
-             6
-```
-
-```java
-public void flatten(TreeNode root) {
-    if (root == null) return;
-    if (root.left != null) flatten(root.left);
-    if (root.right != null) flatten(root.right);
-
-    TreeNode tmp = root.right;
-    root.right = root.left;
-    root.left = null;
-    while (root.right != null) {
-        root = root.right;
-    }
-    root.right = tmp;
 }
 ```
 
@@ -2681,6 +2956,64 @@ public int calculateMinimumHP(int[][] dungon) {
 }
 ```
 
+### Ones and Zeroes
+
+题号：474
+
+思路：回溯法会超时，改用DP，题目要求 `0` 或者 `1` 不必全部用完，返回最大个数即可，典型的 0 - 1背包问题，dp数组可全部初始化为0
+
+```txt
+Example 1:
+Input: Array = {"10", "0001", "111001", "1", "0"}, m = 5, n = 3
+Output: 4
+
+Explanation: This are totally 4 strings can be formed by the using of 5 0s and 3 1s, which are “10,”0001”,”1”,”0”
+Example 2:
+Input: Array = {"10", "0", "1"}, m = 1, n = 1
+Output: 2
+
+Explanation: You could form "10", but then you'd have nothing left. Better form "0" and "1".
+```
+
+```java
+public int findMaxForm(String[] strs, int m, int n) {
+    if (strs.length == 0) {
+        return 0;
+    }
+    int[][] dp = new int[m + 1][n + 1];
+    for (int k = 0; k < strs.length; k++) {
+        int z = zero(strs[k]);
+        int o = one(strs[k]);
+        for (int i = m; i >= z; i--) {
+            for (int j = n; j >= o; j--) {
+                dp[i][j] = Math.max(dp[i][j], dp[i - z][j - o] + 1);
+            }
+        }
+    }
+    return dp[m][n];
+}
+
+private int zero(String str) {
+    int count = 0;
+    for (int i = 0; i < str.length(); i++) {
+        if (str.charAt(i) == '0') {
+            count++;
+        }
+    }
+    return count;
+}
+
+private int one(String str) {
+    int count = 0;
+    for (int i = 0; i < str.length(); i++) {
+        if (str.charAt(i) == '1') {
+            count++;
+        }
+    }
+    return count;
+}
+```
+
 ### 问题：Range Sum Query 2D - Immutable
 
 题号：304
@@ -2779,6 +3112,33 @@ public ListNode reverseBetween(ListNode head, int m, int n) {
 }
 ```
 
+### 问题：Reverse Nodes in k-Group
+
+自己的思路：将问题拆解为顺序反转LinkedList `[idx， idx + k]` 部分，Discuss的思路：递归，现将后部分递归反转，再反转剩余的前半部分
+
+```java
+public ListNode reverseKGroup(ListNode head, int k) {
+    ListNode curr = head;
+    int count = 0;
+    while (curr != null && count != k) { // find the k+1 node
+        curr = curr.next;
+        count++;
+    }
+    if (count == k) { // if k+1 node is found
+        curr = reverseKGroup(curr, k); // reverse list with k+1 node as head
+        // head - head-pointer to direct part, head保存的是队列未旋转部分的头部
+        // curr - head-pointer to reversed part; curr保存的是已经旋转部分的头部，初始情况下为 要旋转部分末尾的后一个元素
+        while (count-- > 0) { // reverse current k-group:
+            ListNode tmp = head.next; // tmp - next head in direct part tmp指向head的下一个元素
+            head.next = curr; // preappending "direct" head to the reversed list 未旋转头部head指向 已旋转的头部curr
+            curr = head; // move head of reversed part to a new node  curr替换为head
+            head = tmp; // move "direct" head to the next node in direct part head替换为tmp
+        }
+        head = curr; // 旋转结束后，head指向已旋转头部
+    }
+    return head;
+}
+```
 
 ### 问题：Linked List Cycle
 
@@ -3075,6 +3435,43 @@ public ListNode mergeTwoLists(ListNode l1, ListNode l2){
 }
 ```
 
+### 问题：Partition List
+
+题号：86
+
+```txt
+将小于x的元素移动到大于等于x的左侧
+Example:
+Input: head = 1->4->3->2->5->2, x = 3
+Output: 1->2->2->4->3->5
+```
+
+思路：对小于x的元素和大于等于x的元素分别构造链表，然后将两链表连接
+
+```java
+public ListNode partition(ListNode head, int x) {
+    ListNode less = new ListNode(Integer.MIN_VALUE);
+    ListNode greater = new ListNode(Integer.MIN_VALUE);
+
+    ListNode p1 = less;
+    ListNode p2 = greater;
+    while (head != null) {
+        if (head.val < x) {
+            p1.next = head;
+            p1 = p1.next;
+        } else {
+            p2.next = head;
+            p2 = p2.next;
+        }
+        head = head.next;
+    }
+
+    p2.next = null;
+    p1.next = greater.next;
+    return less.next;
+}
+```
+
 ## **Matrix**
 
 ### Spiral Matrix
@@ -3279,6 +3676,75 @@ public void rotate(int[][] matrix) {
             int tmp = matrix[i][j];
             matrix[i][j] = matrix[i][n - 1 - j];
             matrix[i][n - 1 - j] = tmp;
+        }
+    }
+}
+```
+
+### 问题：Set Matrix Zeroes
+
+题号：73
+
+思路1：暴力，用boolean数组记录0的位置，遍历boolean数组，将true元素所在行列置0
+
+思路2:
+
+```txt
+if cell[i][j] == 0 {
+    cell[i][0] = 0
+    cell[0][j] = 0
+}
+
+将除第一行第一列外的矩阵按照规则置0
+
+如果第一行中包含0，那么matrix[0][0]一定会被置0
+```
+
+```java
+public void setZeroes(int[][] matrix) {
+    Boolean isCol = false;
+    int R = matrix.length;
+    int C = matrix[0].length;
+
+    for (int i = 0; i < R; i++) {
+
+    // Since first cell for both first row and first column is the same i.e. matrix[0][0]
+    // We can use an additional variable for either the first row/column.
+    // For this solution we are using an additional variable for the first column
+    // and using matrix[0][0] for the first row.
+        if (matrix[i][0] == 0) {
+            isCol = true;
+        }
+
+        for (int j = 1; j < C; j++) {
+        // If an element is zero, we set the first element of the corresponding row and column to 0
+            if (matrix[i][j] == 0) {
+                matrix[0][j] = 0;
+                matrix[i][0] = 0;
+            }
+        }
+    }
+
+    // Iterate over the array once again and using the first row and first column, update the elements.
+    for (int i = 1; i < R; i++) {
+        for (int j = 1; j < C; j++) {
+            if (matrix[i][0] == 0 || matrix[0][j] == 0) {
+                matrix[i][j] = 0;
+            }
+        }
+    }
+
+    // See if the first row needs to be set to zero as well
+    if (matrix[0][0] == 0) {
+        for (int j = 0; j < C; j++) {
+            matrix[0][j] = 0;
+        }
+    }
+
+    // See if the first column needs to be set to zero as well
+    if (isCol) {
+        for (int i = 0; i < R; i++) {
+            matrix[i][0] = 0;
         }
     }
 }
