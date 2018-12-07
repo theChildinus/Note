@@ -130,7 +130,7 @@ public List<Integer> findDuplicates(int[] nums) {
 
 ```java
 // 基本旋转
-public void reverse(int[] nums, int begin, int end) {
+public void reverse(int[] nums, int start, int end) {
     while (start < end) {
         int tmp = nums[start];
         nums[start] = nums[end];
@@ -315,17 +315,20 @@ public List<Integer> majorityElement(int[] nums) {
     List<Integer> result = new ArrayList<Integer>();
     int number1 = nums[0], number2 = nums[0], count1 = 0, count2 = 0, len = nums.length;
     for (int i = 0; i < len; i++) {
-        if (nums[i] == number1)
+        if (nums[i] == number1) // 投A
             count1++;
-        else if (nums[i] == number2)
+        else if (nums[i] == number2) // 投B
             count2++;
+        // 此时两个人都不投，检查是否有票数为0的，更新候选人
         else if (count1 == 0) {
             number1 = nums[i];
             count1 = 1;
         } else if (count2 == 0) {
+            // 第二个数字和第一个数字不相等时， number2 在这里指向第二个数字，并计数
             number2 = nums[i];
             count2 = 1;
         } else {
+            // 此时两个候选人的票数都大于1，且当前不投AB，那么AB的票数都减1
             count1--;
             count2--;
         }
@@ -375,7 +378,7 @@ public int hIndex(int[] citations) {
     int n = citations.length;
     int[] count = new int[n + 1];
     for(int c : citations)
-        if(c >= n) count[n]++;  //当引用数大于等于 n 时，我们均将其数量计入 count[n]中
+        if(c >= n) count[n]++;  //当引用数大于等于 n 时，我们均将其数量计入 count[n]中，可以理解为发了n篇论文，影响因子最大为n
         else count[c]++;
     for(int i = n; i > 0; i--) {  //从后面开始遍历
         if(count[i] >= i) return i;
@@ -385,7 +388,7 @@ public int hIndex(int[] citations) {
 }
 ```
 
-对于排序好的数组，进行二分查找
+275：对于排序好的数组，进行二分查找
 
 ```java
 public int hIndex(int[] citations) {
@@ -414,9 +417,9 @@ public int hIndex(int[] citations) {
 
 方法：暴力，排序，set
 
-219：给定一个整数数组和一个整数 k，判断数组中是否存在两个不同的索引 i 和 j，使得 nums [i] = nums [j]，并且 i 和 j 的差的绝对值最大为 k
+219：给定一个整数数组和一个整数 k，判断数组中是否存在两个不同的索引 i 和 j，使得 `nums[i] == nums[j]` ，并且 `i` 和 `j` 的差的绝对值最大为 k
 
-思路：建立一个长度为k的set，用它来扫描整个数组，不断地判断新出现的数据能不能放进去，如果不能放进去，说明存在距离小于等于k的数据是有相等的，否则就可以放进去，当然set中的数据量如果超过k了就要同时把早先放进去的数据拿出来了
+思路：建立一个长度为k的set，用它来扫描整个数组，不断地判断新出现的数据能不能放进去，如果不能放进去，说明存在距离小于等于k的数据中存在相等的，否则就可以放进去，当然set中的数据量如果超过k了就要同时把早先放进去的数据拿出来了
 
 ```java
 public boolean containsNearbyDuplicate(int[] nums, int k) {
@@ -429,13 +432,11 @@ public boolean containsNearbyDuplicate(int[] nums, int k) {
  }
 ```
 
-220：给定一个整数数组，判断数组中是否有两个不同的索引 i 和 j，使得 nums [i] 和 nums [j] 的差的绝对值最大为 t，并且 i 和 j 之间的差的绝对值最大为 k
+220：给定一个整数数组，判断数组中是否有两个不同的索引 `i` 和 `j`，使得 `nums[i]` 和 `nums[j]` 的差的绝对值最大为 `t`，并且 `i` 和 `j` 之间的差的绝对值最大为 `k`
 
 思路:平衡树的方法 复杂度 nlogk
 
-题意有：`-t <= x - nums[i] <= t` 左边有 `nums[i] - t <= x` 因此把符合条件的数构建成一颗平衡树，然后查找一个最小的x使得 `x >= nums[i] - t`
-
-或者找到 x 满足 `x  <= t + nums[i]`
+题意有：`-t <= x - nums[i] <= t` 左边有 `nums[i] - t <= x` 因此把符合条件的数构建成一颗平衡树，然后查找一个 `x` 使得 `x >= nums[i] - t` 或者找到 x 满足 `x  <= t + nums[i]`
 
 ```java
 public boolean containsNearbyAlmostDuplicate(int[] nums, int k, int t) {
@@ -445,6 +446,7 @@ public boolean containsNearbyAlmostDuplicate(int[] nums, int k, int t) {
     for (int i = 0; i < nums.length; i++) {
         long l = (long)nums[i];
 
+        // floor 和 ceil 是选取的x的值
         Long floor = set.floor(l); // set中小于等于给定元素 的最大元素
         Long ceil = set.ceiling(l); // set中大于等于给定元素 的最小元素
         if (floor != null && l - floor <= t ||
@@ -483,10 +485,12 @@ beats 100% :satisfied:
 动态规划算法：
 
 - 1.全局最优解中一定包含某个局部最优解，但不一定包含前一个局部最优解，**因此需要记录之前的所有最优解**
-- 2.动态规划的关键是状态转移方程，即如何由以求出的局部最优解来推导全局最优解
+- 2.动态规划的关键是状态转移方程，即如何由已求出的局部最优解来推导全局最优解
 - 3.边界条件：即最简单的，可以直接得出的局部最优解
 
 [Solution](https://leetcode.com/problems/jump-game/solution/)
+
+`It does not matter that nums[0] is big enough to jump all the way to the last index. All we need is one way.`
 
 ```java
 public boolean canJump(int[] nums) {
@@ -507,9 +511,11 @@ public boolean canJump(int[] nums) {
 
 45题 要求计算出最少的跳转次数
 
-sc: current step. max: current furthest. e: current furthest with one more step
+- sc: 已经跳过的步数
+- max:`[curStart, curEnd]` 中能够跳到最远的位置，即 curFarthest
+- e: current furthest with one more step
 
-从前向后遍历，只在`i == e`，即当前位置i达到当前最远距离时，步数加1，此时为 `<i` 范围内的最优解
+从前向后遍历，只在 `i == e`，即当前位置i达到当前最远距离时，步数加1，此时为 `<i` 范围内的最优解
 
 ```java
 public int jump(int[] nums) {
@@ -855,6 +861,30 @@ public int longestConsecutive(int[] nums) {
 }
 ```
 
+### 问题：Longest Increasing Subsequence
+
+题号：300
+
+`dp[i]` 表示以 `nums[i]` 为结尾的最长递增子串的长度
+
+```java
+public int lengthOfLIS(int[] nums) {
+    if (nums.length  == 0) return 0;
+    int n = nums.length;
+    int[] dp = new int[n];
+    Arrays.fill(dp, 1);
+    int ans = 1;
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < i; j++) {
+            int cur = nums[j] < nums[i] ? (dp[j] + 1) : 1;
+            dp[i] = Math.max(cur, dp[i]);
+            ans = Math.max(dp[i], ans);
+        }
+    }
+    return ans;
+}
+```
+
 ### 查找重复元素
 
 题号：287
@@ -946,6 +976,39 @@ public List<Interval> merge(List<Interval> intervals) {
     }
     ans.add(new Interval(start, end));
     return ans;
+}
+```
+
+### 问题：Maximum Length of Pair Chain
+
+题号：646
+
+```txt
+Example 1:
+Input: [[1,2], [2,3], [3,4]]
+Output: 2
+Explanation: The longest chain is [1,2] -> [3,4]
+```
+
+思路：按照第二个数字排序
+
+```java
+public int findLongestChain(int[][] pairs) {
+    Arrays.sort(pairs, new Comparator<int[]>() {
+        @Override
+        public int compare(int[] p1, int[] p2) {
+            return p1[1] - p2[1];
+        }
+    });
+    int n = pairs.length;
+    int cnt = 1, end = pairs[0][1];
+    for (int i = 1; i < n; i++) {
+        if (pairs[i][0] > end) {
+            cnt++;
+            end = pairs[i][1];
+        }
+    }
+    return cnt;
 }
 ```
 
@@ -1049,6 +1112,34 @@ public boolean search(int[] nums, int target) {
     return nums[low] == target;
 }
 ```
+
+### 问题：Two Sum
+
+```txt
+Example:
+
+Given nums = [2, 7, 11, 15], target = 9,
+
+Because nums[0] + nums[1] = 2 + 7 = 9,
+return [0, 1].
+```
+
+```java
+public int[] twoSum(int[] nums, int target) {
+    Map<Integer, Integer> map = new HashMap<>();
+
+    for (int i = 0; i < nums.length; i++) {
+        Integer index = map.get(nums[i]);
+        if (index != null) {
+            return new int[] { index, i };
+        }
+        map.put(target - nums[i], i);
+    }
+
+    return null;
+}
+```
+
 
 ## **String**
 
@@ -1557,7 +1648,7 @@ int findSubstring(string s){
 Example 1:
 
 Input: "abcabcbb"
-Output: 3 
+Output: 3
 Explanation: The answer is "abc", with the length of 3. 
 Example 2:
 
@@ -1568,7 +1659,7 @@ Example 3:
 
 Input: "pwwkew"
 Output: 3
-Explanation: The answer is "wke", with the length of 3. 
+Explanation: The answer is "wke", with the length of 3.
              Note that the answer must be a substring, "pwke" is a subsequence and not a substring.
 ```
 
@@ -2250,7 +2341,7 @@ public boolean isSameTree(TreeNode n1, TreeNode n2) {
         return false;
     else {
         return  n1.val==n2.val &&
-                isSameTree(n1.left, n2.left) && 
+                isSameTree(n1.left, n2.left) &&
                 isSameTree(n1.right, n2.right);
     }
 }
@@ -2303,6 +2394,38 @@ public void flatten(TreeNode root) {
         root = root.right;
     }
     root.right = tmp;
+}
+```
+
+## 问题：Binary Search Tree Iterator
+
+题号：173
+
+```java
+public class BSTIterator {
+    Stack<TreeNode> stack = new Stack<>();
+    public BSTIterator(TreeNode root) {
+        pushAll(root);
+    }
+
+    /** @return whether we have a next smallest number */
+    public boolean hasNext() {
+        return !stack.isEmpty();
+    }
+
+    /** @return the next smallest number */
+    public int next() {
+        TreeNode tmp = stack.pop();
+        pushAll(tmp.right);
+        return tmp.val;
+    }
+
+    public void pushAll(TreeNode root) {
+        while (root != null) {
+            stack.push(root);
+            root = root.left;
+        }
+    }
 }
 ```
 
@@ -2639,7 +2762,7 @@ public List<List<Integer>> findSubsequences(int[] nums) {
 
 private void helper(Set<List<Integer>> set, List<Integer> list, int start, int[] nums) {
     if (list.size() >= 2) {
-        set.add(new ArrayList<>(list));    
+        set.add(new ArrayList<>(list));
     }
 
     for (int i = start; i < nums.length; i++) {
@@ -3469,6 +3592,60 @@ public ListNode partition(ListNode head, int x) {
     p2.next = null;
     p1.next = greater.next;
     return less.next;
+}
+```
+
+### 问题：Flatten a Multilevel Doubly Linked List
+
+题号：430
+
+```txt
+Example:
+
+Input:
+ 1---2---3---4---5---6--NULL
+         |
+         7---8---9---10--NULL
+             |
+             11--12--NULL
+
+Output:
+1-2-3-7-8-11-12-9-10-4-5-6-NULL
+```
+
+思路：用Stack保存后续节点，如上图中的4节点，9节点，顺序遍历child节点及其后续节点，当遍历结束，如上图遍历完12之后，从Stack中弹出9继续遍历，遇到child节点压栈
+
+```java
+public Node flatten(Node head) {
+    if (head == null) {
+        return null;
+    }
+    Node dummy = new Node(0, null, head, null);
+    Node cur = dummy;
+    Node pre = dummy;
+    Stack<Node> stack = new Stack<>();
+    stack.push(head);
+    while (!stack.isEmpty()) {
+        Node tail = stack.pop();
+        pre.next = tail;
+        if (tail != head) {
+            tail.prev = pre;
+        }
+        cur = pre.next;
+        while (cur != null) {
+            if (cur.child != null) {
+                if (cur.next != null) {
+                    stack.push(cur.next);
+                }
+                cur.next = cur.child;
+                cur.child.prev = cur;
+                cur.child = null;
+            }
+            pre = cur;
+            cur = cur.next;
+        }
+    }
+    return dummy.next;
 }
 ```
 
