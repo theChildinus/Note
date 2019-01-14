@@ -5,8 +5,10 @@
 Spark Streaming 整体分为4个模块
 
 1. DAG 静态定义
-2. Job 动态生成
+2. Job 动态生成 (这篇)
 3. 数据产生与导入
+   - [数据产生 - Receiver分发和启动](/Receiver分发和启动.md)
+   - [数据导入 - ReceiverSupervisor](/ReceiverSupervisor.md)
 4. 长时容错
 
 ![每个模块涉及的类](/image/SparkStreaming.png)
@@ -281,3 +283,7 @@ private class JobHandler(job: Job) extends Runnable with Logging {
 ```
 
 `job` 的运行逻辑在 `ForEachDstream.generateJob(time)` 时定义，即定义了 `job.func`，而在 `JobHandler` 这里是真正调用了 `Job.run()`
+
+接下来我们分析 `JobScheduler` 有第二个成员： `ReceiverTracker`。`JobScheduler` 将源头输入数据的记录工作委托给 `ReceiverTracker`。
+
+[看这里 - ReceiverTracker](/ReceiverTracker.md)
