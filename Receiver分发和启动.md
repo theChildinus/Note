@@ -35,6 +35,7 @@ def start(): Unit = synchronized {
         endpoint = ssc.env.rpcEnv.setupEndpoint(
         "ReceiverTracker", new ReceiverTrackerEndpoint(ssc.env.rpcEnv))
         // 将各个 receivers 分发到 executors 上
+        // 调用方法 launchReceivers
         if (!skipReceiverLaunch) launchReceivers()
         logInfo("ReceiverTracker started")
         trackerState = Started
@@ -42,14 +43,13 @@ def start(): Unit = synchronized {
 }
 ```
 
-在 `launchReceivers()` 中：
+在方法 `launchReceivers()` 中，第一步获取所有的receivers，第二步给endpoint发送 `StartAllReceivers` 事件
 
 ```scala
 // receiverInputStreams 定义
 private val receiverInputStreams = ssc.graph.getReceiverInputStreams()
 /**
-* Get the receivers from the ReceiverInputDStreams, distributes them to the
-* worker nodes as a parallel collection, and runs them.
+Get the receivers from the ReceiverInputDStreams, distributes them to the worker nodes as a parallel collection, and runs them.
 */
 private def launchReceivers(): Unit = {
 
@@ -76,14 +76,12 @@ private def launchReceivers(): Unit = {
 
 ```scala
 /**
-* Gets the receiver object that will be sent to the worker nodes
-* to receive data. This method needs to defined by any specific implementation
-* of a ReceiverInputDStream.
+* Gets the receiver object that will be sent to the worker nodes to receive data. This method needs to defined by any specific implementation of a ReceiverInputDStream.
 */
 def getReceiver(): Receiver[T]
 ```
 
-以 `SocketInputDStream` 为例：
+说明继承 `ReceiverInputDStream` 的子类需要实现 `getReceiver()` 方法，以 `SocketInputDStream` 为例：
 
 ```scala
 private[streaming]
@@ -169,7 +167,7 @@ private[streaming] case class StartAllReceivers(receiver: Seq[Receiver[_]])
   extends ReceiverTrackerLocalMessage
 ```
 
-父类 `ReceiverTrackerLocalMessage`
+接口 `ReceiverTrackerLocalMessage`
 
 ```scala
 /**
@@ -321,9 +319,8 @@ def start() {
 protected def onStart() { }
 ```
 
-父类 `ReceiverSupervisor`
-
 ```scala
+// 父类 ReceiverSupervisor
 def startReceiver(): Unit = synchronized {
     try {
         // onReceiverStart 发送注册事件
@@ -377,4 +374,4 @@ def onStart() {
 }
 ```
 
-至此 Receiver 便真正的启动了，可以开始接收数据，接收的数据怎么存到SparkStreaming中呢？ 来看这篇：
+至此 Receiver 便真正的启动了，可以开始接收数据，接收的数据怎么存到SparkStreaming中呢？ 来看这篇：[数据导入 - ReceiverSupervisor](/ReceiverSupervisor.md)
