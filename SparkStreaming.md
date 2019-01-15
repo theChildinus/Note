@@ -5,6 +5,8 @@
 Spark Streaming 整体分为4个模块
 
 1. DAG 静态定义
+   - [DStream, DStreamGraph 详解](https://github.com/lw-lin/CoolplaySpark/blob/master/Spark%20Streaming%20%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90%E7%B3%BB%E5%88%97/1.1%20DStream%2C%20DStreamGraph%20%E8%AF%A6%E8%A7%A3.md)
+   - [DStream 生成 RDD 实例详解](https://github.com/lw-lin/CoolplaySpark/blob/master/Spark%20Streaming%20%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90%E7%B3%BB%E5%88%97/1.2%20DStream%20%E7%94%9F%E6%88%90%20RDD%20%E5%AE%9E%E4%BE%8B%E8%AF%A6%E8%A7%A3.md)
 2. Job 动态生成 (这篇)
 3. 数据产生与导入
    - [数据产生 - Receiver分发和启动](/Receiver分发和启动.md)
