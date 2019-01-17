@@ -4389,6 +4389,12 @@ Zookeeper特点：
 
 将Zookeeper看作一个具有高可能性特性的文件系统，这个文件系统中没有目录和文件，而是统一使用节点的概念，称为znode
 
+znode 既可以作为保存数据的容器(如同文件)，也可以作为保存其他znode的容器(如同目录)，所有的znode构成了一个层次化的命名空间
+
+![znode](image/znode.png)
+
+创建组名为 `/zoo` 的znode
+
 ```java
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
@@ -4409,12 +4415,13 @@ public class CreateGroup implements Watcher {
 
     public void connect(String host) throws IOException, InterruptedException {
         // 实例化一个新的Zookeeper类的对象，这个类是客户端API的主要类，用于维护客户端可Zookeeper服务之间的连接
-        // 第三个是Watcher对象的实例，Watcher对象接收来自ZooKeeper的回调，以获取各种事件的通知
+        // 第二个是以毫秒为单位的会话超时参数
+        // 第三个是Watcher对象的实例，Watcher对象接收来自ZooKeeper的回调，以获取各种事件的通知，这个例子中，CreateGroup就是一个Wathcer对象
         zk = new ZooKeeper(host, SESSION_TIMEOUT, this);
         connectedSignal.await();
     }
 
-    // 当客户端已经与ZooKeeper服务建立连接后，Watcher的process方法会被调用，
+    // 当客户端已经与ZooKeeper服务建立连接后，Watcher的process方法会被调用，参数是一个用于表示该连接的事件
     @Override
     public void process(WatchedEvent event) {
         if (event.getState() == KeeperState.SyncConnected) {
@@ -4447,9 +4454,11 @@ public class CreateGroup implements Watcher {
 - 短暂znode 无论客户端是明确断开还是因为任何原因断开而终止，该节点都会被ZooKeeper服务删除
 - 持久znode 不会被删除
 
+我们希望代表一个组的znode存活的时间应当比创建程序的生命周期长，因此本例中我们创建了一个持久的znode
+
 #### 加入组
 
-每个组成员将作为一个程序运行，并且加入到组中，当程序退出时，这个组成员应当从组中删除
+这个应用下一部分是一段用于注册组成员的程序，每个组成员将作为一个程序运行，并且加入到组中，当程序退出时，这个组成员应当从组中删除，为了实现这一点我们使用短暂znode
 
 ```java
 import org.apache.zookeeper.CreateMode;
@@ -4472,9 +4481,35 @@ public class JoinGroup extends ConnectionWatcher {
         joinGroup.join(args[1], args[2]);
     }
 }
+
+public class ConnectionWatcher implements Watcher {
+
+    private static final int SESSION_TIMEOUT = 5000;
+    protected ZooKeeper zk;
+    private CountDownLatch connectedSignal = new CountDownLatch(1);
+
+    public void connect(String host) throws IOException, InterruptedException {
+        zk = new ZooKeeper(host, SESSION_TIMEOUT, this);
+        connectedSignal.await();
+    }
+
+    public void process(WatchedEvent event) {
+        if (event.getState() == Event.KeeperState.SyncConnected) {
+            connectedSignal.countDown();
+        }
+    }
+
+    public void close() throws InterruptedException {
+        zk.close();
+    }
+}
 ```
 
+随着进程被强行终止，这个短暂znode被Zookeeper删除
+
 #### 列出组成员
+
+现在我们需要一个段程序来查看组成员
 
 ```java
 import org.apache.zookeeper.KeeperException;
@@ -4516,6 +4551,8 @@ public class ListGroup extends ConnectionWatcher {
 #### 删除组
 
 Zookeeper不支持递归的删除操作，因此删除父节点之前必须先删除子节点
+
+该示例用于删除一个组及其所有成员
 
 ```java
 import org.apache.zookeeper.KeeperException;
@@ -4565,20 +4602,22 @@ ZooKeeper的数据访问具有原子性
 - 读操作要么读到所有数据，要么读失败，不会存在只读部分数据
 - 写操作替换znode所有数据，要么写失败，不会存在部分写的情况
 
-znode通过路径被引用
+znode通过路径被引用，与Unix中的文件系统路径不同，Zookeeper中的路径必须是绝对路径，此外所有的路径表示必须是规范的，即每条路径只有唯一的一种表示方式，不支持路径解析。
 
-##### 短暂znode
+znode 有一些特性非常适合用于构建分布式应用：
 
-创建短暂znode的客户端会话结束时，ZooKeeper会将该短暂znode删除，相比之下，持久znode不依赖于客户端会话，只有客户端明确要删除该持久znode时才会被删除。短暂znode不可以有子节点，即使是短暂子节点，对于那些需要知道特性时刻有哪些分布式资源可用的应用来说，使用短暂znode是一种理想的选择
+##### 1. 短暂znode
 
-##### 顺序号
+创建短暂znode的客户端会话结束时，ZooKeeper会将该短暂znode删除，相比之下，持久znode不依赖于客户端会话，只有客户端明确要删除该持久znode时才会被删除。短暂znode不可以有子节点，即使是短暂子节点，对于那些需要知道特定时刻有哪些分布式资源可用的应用来说，使用短暂znode是一种理想的选择
+
+##### 2. 顺序号
 
 顺序(sequential)znode是指名称中包含ZooKeeper指定顺序号的znode，如果在创建znode时设置了顺序标识，那么该znode名称之后便会
 附加一个值，这个值是一个单调递增的计数器所添加的
 
 在一个分布式系统中，顺序号可以被用于为所有的事件进行全局排序，这样客户端就可以通过顺序来推断事件的顺序
 
-##### 观察
+##### 3. 观察
 
 znode以某种方式发生变化时，观察watch机制可以让客户端得到通知，观察只能够触发一次，为了能够多次收到通知，客户端需要重新注册所需的观察
 
@@ -4596,18 +4635,24 @@ ZooKeeper服务的操作
 | getData, setData | Gets/sets the data associated with a znode              |
 | sync             | Synchronizes a client’s view of a znode with ZooKeeper |
 
-##### 1.集合更新
+Zookeeper 中的更新操作是有条件的，再使用 delete 和 setData 操作时必须提供被更新 znode 的版本号，如果版本号不匹配，则更新操作会失败。更新操作是非阻塞操作，因此一个更新失败的客户端可以决定是否重试，或执行其他操作，并不会因此而阻塞其他进程的执行
+
+##### 1. 集合更新
 
 ZooKeeper中有一个被称为multi的操作，用于将多个基本操作集合成一个操作单元，并保证这些基本操作同时被成功执行或者同时失败
 
-集合更新可用于在Zookeeper中构建需要保持全局一致性的数据结构
+集合更新可用于在Zookeeper中构建需要保持全局一致性的数据结构，例如构建一个无向图
 
-##### 2.关于API
+##### 2. 关于API
 
 - 同步API
 - 异步API
 
-##### 3.观察触发器
+两种类型的API提供相同的功能，因此选择哪一种只是风格问题，例如如果习惯于事件驱动的编程模型，则异步API更合适一些
+
+##### 3. 观察触发器
+
+在 exists，getChildren，getData 这些读操作上可以设置观察，这些观察可以被写操作 create，delete 和 setData 触发，ACL的相关操作不参与触发任何观察，当一个观察被触发时会产生一个观察事件，这个观察和触发它的操作共同决定着观察事件的类型。
 
 - 当所观察的znode被创建，删除或者数据被更新时，设置在exists操作上的观察将被触发
 - 当所观察的znode被删除或者数据被更新时，设置在getData操作上的观察将被触发，创建znode不会触发getData操作上的观察
@@ -4619,7 +4664,7 @@ ZooKeeper中有一个被称为multi的操作，用于将多个基本操作集合
 | getData        |              |                     | NodeDeleted  |                     | NodeDataChanged |
 | getChildren    |              | NodeChildrenChanged | NodeDeleted  | NodeChildrenChanged |
 
-##### 4.ACL
+##### 4. ACL
 
 每个znode创建时都会带有一个ACL列表用于决定谁可以对它执行何种操作
 
@@ -4629,7 +4674,7 @@ ZooKeeper提供了以下几种身份验证方式
 - sasl 通过Kerberos来识别客户端
 - ip 通过客户端的IP地址来识别客户端
 
-建立一个ZooKeeper会话之后，客户端可以对自己进行身份验证，索然znode的ACL列表要求所有客户端是经过验证的，但ZooKeeper的身份验证过程却是可选的,客户端必须自己进行身份验证来支持对znode的访问
+建立一个ZooKeeper会话之后，客户端可以对自己进行身份验证，虽然znode的ACL列表要求所有客户端是经过验证的，但ZooKeeper的身份验证过程却是可选的,客户端必须自己进行身份验证来支持对znode的访问
 
 | ACL权限 | 允许的操作             |
 | ------- | ---------------------- |
@@ -4643,8 +4688,8 @@ ZooKeeper提供了以下几种身份验证方式
 
 ZooKeeper服务有两种不同的运行模式
 
-- 独立模式，只有一个ZooKeeper服务器
-- 复制模式，ZooKeeper运行在一个计算机集群上，这个计算机集群被称为集合体,一个集合体通常包含奇数台机器
+- 独立模式，只有一个ZooKeeper服务器，适用于测试环境
+- 复制模式，ZooKeeper运行在一个计算机集群上，这个计算机集群被称为集合体,一个集合体通常包含奇数台机器，只要集合体中半数以上的机器处于可用状态，它就能够提供服务
 
 从概念上说，ZooKeeper是非常简单的，它所做的就是确保对znode树的每个修改都会被复制到集合体中超过半数的机器上
 
