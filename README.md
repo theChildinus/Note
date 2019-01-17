@@ -8,6 +8,7 @@
 
 - [Hadoop权威指南](/Hadoop权威指南.md)
 - [SparkStreaming源码](/SparkStreaming.md)
+- [kafka](/kafka.md)
 
 ## :penguin: [折腾Linux 遇到的坑](/fixLinux.md)
 
