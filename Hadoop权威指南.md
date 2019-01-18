@@ -4363,6 +4363,8 @@ RDBMS强调事务的强一致性，参照完整性，数据抽象与物理存储
 
 ## 第21章 关于ZooKeeper
 
+[推荐阅读 - ZooKeeper 是什么](https://www.itcodemonkey.com/article/3718.html)
+
 Zookeeper是Hadoop的分布式协调服务，写分布式应用的主要困难在于会出现部分失败(partial failure)
 
 - 发送者不知道接受者是否收到消息
@@ -4693,7 +4695,14 @@ ZooKeeper服务有两种不同的运行模式
 
 从概念上说，ZooKeeper是非常简单的，它所做的就是确保对znode树的每个修改都会被复制到集合体中超过半数的机器上
 
-ZooKeeper使用了Zab协议，该协议包括两个可以无限重复的阶段
+ZooKeeper Service集群是一主多从结构
+
+- 在更新数据时，首先更新到主节点上，在同步到从节点上，这里的节点是指服务器，不是Znode
+- 在读取数据时，直接读取任意从节点
+
+ZooKeeper使用了Zab协议，这个协议非常类似于一致性算法：paxos 和Raft，但是与Paxos有不同之处，例如它依靠TCP来保证其消息的顺序。
+
+该协议包括两个可以无限重复的阶段
 
 ##### 阶段1:领导者选举
 
@@ -4713,7 +4722,7 @@ ZooKeeper使用了Zab协议，该协议包括两个可以无限重复的阶段
 
 ![zookeeperService](image/zookeeperService.png)
 
-每一个对znode树的更新都会被赋予一个全局唯一的ID，称为zxid，ZooKeeper要求对所有的更新进行编号并排序
+每一个对znode树的更新都会被赋予一个全局唯一的ID，称为zxid，ZooKeeper要求对所有的更新进行编号并排序，它决定了分布式系统的执行顺序，如果 zxid z1 小于 z2，则 z1 一定发生在 z2 之前
 
 在ZooKeeper的设计中，以下几点保证了数据的一致性
 
