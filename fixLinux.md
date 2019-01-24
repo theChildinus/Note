@@ -71,3 +71,17 @@ ubuntu 18.04 如何正确的安装mysql 5.7？
 去[官方网站](https://www.mysql.com/downloads/)下载系统对应版本的安装程序
 
 或[下载](https://dev.mysql.com/downloads/repo/apt/)mysql-apt-config_0.8.10-1_all.deb配置程序，点击安装，选择要安装的mysql版本，然后参考[官方文档](https://dev.mysql.com/doc/mysql-apt-repo-quick-guide/en/)继续安装
+
+## Linux 美化
+
+安装插件
+
+- Chrome/Firefox 安装gnome扩展插件
+- 访问gnome extensions 网站添加插件
+- Alternatetab
+- Dynamic top bar
+- No title bar
+- OpenWeather
+- Screenshot tool
+- Screenshot window sizer
+- User themes

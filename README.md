@@ -10,7 +10,7 @@
 - [SparkStreaming源码](/SparkStreaming.md)
 - [kafka](/kafka.md)
 
-## :penguin: [折腾Linux 遇到的坑](/fixLinux.md)
+## :penguin: [折腾Linux](/fixLinux.md)
 
 ## :black_nib: [LeetCode](/LeetCode.md)
 
