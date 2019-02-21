@@ -34,3 +34,36 @@
 - 深拷贝会拷贝所有的属性,并拷贝属性指向的动态分配的内存。当对象和它所引用的对象一起拷贝时即发生深拷贝。深拷贝相比于浅拷贝速度较慢并且花销较大。
 
 理解深拷贝和浅拷贝的关键在于，Java语言在拷贝的时候只存在值拷贝，对于对象或者容器的拷贝也只是将对象或者容器的地址拷贝，在判断修改引用时是否会引起干扰，先要看对地址做了什么的操作，再看对地址的值做了什么操作
+
+## Java 线程中断
+
+```java
+//中断线程（实例方法）
+public void Thread.interrupt();
+
+//判断线程是否被中断（实例方法）
+public boolean Thread.isInterrupted();
+
+//判断是否被中断并清除当前中断状态（静态方法）
+public static boolean Thread.interrupted();
+```
+
+中断两种情况：
+
+- 一种是当线程处于阻塞状态或者试图执行一个阻塞操作时，我们可以使用实例方法interrupt()进行线程中断，执行中断操作后将会抛出interruptException异常(该异常必须捕捉无法向外抛出)并将中断状态复位
+- 另外一种是当线程处于运行状态时，我们也可调用实例方法interrupt()进行线程中断，但同时必须手动判断中断状态，并编写中断线程的代码(其实就是结束run方法体的代码)
+
+兼顾两种情况：
+
+```java
+public void run() {
+    try {
+    //判断当前线程是否已中断,注意interrupted方法是静态的,执行后会对中断状态进行复位
+    while (!Thread.interrupted()) {
+        TimeUnit.SECONDS.sleep(2);
+    }
+    } catch (InterruptedException e) {
+
+    }
+}
+```
