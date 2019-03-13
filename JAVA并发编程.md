@@ -96,8 +96,6 @@ Java 内存模型保证了 read、load、use、assign、store、write、lock 和
 
 java 内存模型通过 在变量修改后将新值同步回主内存，在变量读取前从主内存刷新变量值这种依赖主内存作为传输媒介的方式实现可见性
 
-三种实现可见性的方式：volatile，synchronized，final
-
 区别于普通变量，volatile 的特殊规则保证了新值能立即同步到主内存，以及每次使用前立即从主内存刷新
 
 除了 volatile，synchronized（unlock规则：执行 unlock 操作之前，必须把变量值同步回主内存） 和 final 也实现了可见性
@@ -115,7 +113,7 @@ volatile 关键字通过添加内存屏障的方式来禁止指令重排，即�
 上面提到了可以用 volatile 和 synchronized 来保证有序性。除此之外，JVM 还规定了先行发生原则，让一个操作无需控制就能先于另一个操作完成。
 
 - 程序次序规则：在一个线程内，在程序前面的操作先行发生于后面的操作。
-- 官程锁定规则：一个 unlock 操作先行发生于后面对同一个锁的 lock 操作。
+- 管程锁定规则：一个 unlock 操作先行发生于后面对同一个锁的 lock 操作。
 - volatile 变量规则：对一个 volatile 变量的写操作先行发生于后面对这个变量的读操作。
 - 线程启动规则：Thread 对象的 start() 方法调用先行发生于此线程的每一个动作。
 - 线程加入规则：Thread 对象的结束先行发生于 join() 方法返回。
