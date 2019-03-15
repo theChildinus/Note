@@ -49,6 +49,7 @@
         - [FutureTask](#futuretask)
         - [Java join()方法](#java-join方法)
         - [单例模式](#单例模式)
+        - [抽象工厂模式](#抽象工厂模式)
 
 <!-- /TOC -->
 
@@ -212,6 +213,37 @@ public final int getAndUpdate(int x) {
   - java.lang.ThreadLocal 类
 
 以 ThreadLocal对象为键，任意对象为值的存储结构 一个线程可以根据一个ThreadLocal对象查询到绑定在这个线程上的值
+
+ThreadLocal
+
+- 在每个线程 Thread 内部有一个ThreadLocal.ThreadLocalMap类型的成员变量threadLocals，这个threadLocals就是用来存储实际的变量副本的，键值为当前ThreadLocal变量，value为变量副本（即T类型的变量）
+- 初始时，在Thread里面，threadLocals为空，当通过ThreadLocal变量调用get()方法或者set()方法，就会对Thread类中的threadLocals进行初始化，并且以当前ThreadLocal变量为键值，以ThreadLocal要保存的副本变量为value，存到threadLocals
+- 然后在当前线程里面，如果要使用副本变量，就可以通过get方法在threadLocals里面查找
+
+```java
+public T get() {
+    Thread t = Thread.currentThread();
+    ThreadLocalMap map = getMap(t);
+    if (map != null) {
+        ThreadLocalMap.Entry e = map.getEntry(this);
+        if (e != null) {
+            @SuppressWarnings("unchecked")
+            T result = (T)e.value;
+            return result;
+        }
+    }
+    return setInitialValue();
+}
+
+public void set(T value) {
+    Thread t = Thread.currentThread();
+    ThreadLocalMap map = getMap(t);
+    if (map != null)
+        map.set(this, value);
+    else
+        createMap(t, value);
+}
+```
 
 ## volatile 的实现原理应用
 
@@ -587,7 +619,7 @@ LockSupport提供park()和unpark()方法实现阻塞线程和解除线程阻塞
 
 Condition 接口提供了类似Object的监视器方法，和Lock配合也可以实现等待通知方式
 
-Condition 接口中有多个等待队列，监视器方法中只有一个等待队列，并且不支持当前线程释放锁并进入等待队列状态，再等待状态中不响应中断
+Condition 接口中有多个等待队列，监视器方法中只有一个等待队列，并且不支持当前线程释放锁并进入等待队列状态，在等待状态中不响应中断
 
 ConditionObject 实现了 Condition 接口，作为 同步器的 AbstractQueuedSynchronizer 的内部类
 
@@ -732,9 +764,13 @@ ConcurrentHashMap的锁分段技术可有效提高并发访问率：容器中有
 
 ConcurrentHashMap get操作的高效之处在于整个get过程不需要加锁
 
-- get操作：将需要使用的共享变量定义为 volatile，get方法不需要写共享变量，保证线程间可见，能够被多线程读，不会读到过期的值
+- get操作：将需要使用的共享变量定义为 volatile，get方法不需要写共享变量，根据java内存模型的先行发生原则，对volatile字段的写入操作先于读操作，即使两个线程同时修改和获取volatile变量，get操作也能拿到最新的值，这是用volatile替换锁的经典应用场景。
 - put操作：为了线程安全必须加锁，1.定位到Segment 2.在Segment里进行插入操作 插入操作需要经历两个步骤 1.是否需要扩容 2.定位添加元素的位置，然后将其放到HashEntry数组中
 - size操作：先尝试2次通过不锁Segment的方式来统计各个Segment，如果统计的过程中，容器的count发生了变化（在统计size前后比较modCount是否发生变化），再采用加锁方式
+
+ConcurrentHashMap 扩容优于HashMap是在插入元素之前判断是否需要扩容，HashMap是在插入元素后判断是否需要扩容，但是很有可能扩容之后没有新元素插入，这时HashMap就进行一次无效的扩容
+
+ConcurrentHashMap 扩容的时候首先会创建一个两倍于原容量的数组，然后将原数组里的元素进行再hash后插入到新的数组里，为了高效ConcurrentHashMap不会对整个容器进行扩容，而只对某个segment进行扩容。
 
 JDK 1.8 变化：
 
@@ -770,7 +806,7 @@ ConcurrentLinkedQueue 是一个基于链接节点的非阻塞无界线程安全�
 - PriorityBlockingQueue 支持优先级的无界阻塞队列
 - DelayQueue 支持延时获取元素的无界阻塞队列，即可以指定多久才能从队列中获取当前元素
 - SynchronousQueue 不存储元素的阻塞队列，每一个put必须等待一个take操作，否则不能继续添加元素。
-- LinkedTransferQueue
+- LinkedTransferQueue 链表结构的无界阻塞TransferQueue队列，相比与其他阻塞队列多了 `tryTransfer` 和 `transfer` 方法
 - LinkedBlockingDeque 链表结构的双向阻塞队列，优势在于多线程入队时，减少一半的竞争
 
 ```java
@@ -813,8 +849,8 @@ public class Consumer implements Runnable {
 public static void main(String[] args) {
     BlockingQueue<Object> queue = new LinkedBlockingDeque<Object>(5);
     for (int i = 0; i < 5; i++) {
-        new Thread(new Consumer(queue);, "consumer:" + i).start();
-        new Thread(new Producer(queue);, "producer:" + i).start();
+        new Thread(new Consumer(queue), "consumer: " + i).start();
+        new Thread(new Producer(queue), "producer: " + i).start();
     }
 }
 ```
@@ -946,34 +982,40 @@ FutureTask 实现了 RunnableFuture 接口，该接口继承自 Runnable 和 Fut
 - 能够获取任务执行的结果
 
 ```java
-public class FutureTaskExample {
-
-    public static void main(String[] args) throws ExecutionException, InterruptedException {
-        FutureTask<Integer> futureTask = new FutureTask<Integer>(new Callable<Integer>() {
-            @Override
-            public Integer call() throws Exception {
-                int result = 0;
-                for (int i = 0; i < 100; i++) {
-                    Thread.sleep(10);
-                    result += i;
-                }
-                return result;
+public class Main {
+    private static class Task implements Callable<Integer> {
+        @Override
+        public Integer call() throws Exception {
+            System.out.println("subThread running...");
+            Thread.sleep(3000);
+            int sum = 0;
+            for (int i = 0; i < 100; i++) {
+                sum += i;
             }
-        });
+            return sum;
+        }
+    }
 
-        Thread computeThread = new Thread(futureTask);
-        computeThread.start();
+    public static void main(String[] args) {
+        ExecutorService executor = Executors.newCachedThreadPool();
+        Task task = new Task();
+        FutureTask<Integer> futureTask = new FutureTask<>(task);
+        executor.submit(futureTask);
+        executor.shutdown();
 
-        Thread otherThread = new Thread(() -> {
-            System.out.println("other task is running...");
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        });
-        otherThread.start();
-        System.out.println(futureTask.get());
+        try {
+            Thread.sleep(10000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        System.out.println("mainThread running...");
+
+        try {
+            System.out.println(futureTask.get());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }
 ```
@@ -1065,3 +1107,80 @@ public class InstanceFactory {
 ```
 
 基于volatile的方案优势是：除了对静态字段实现延迟初始化外，还可以对实例字段实现延迟初始化
+
+### 抽象工厂模式
+
+角色：抽象工厂，具体工厂，抽象产品，具体产品，产品使用者
+
+先创建抽象产品（抽象产品A，抽象产品B），具体产品（具体产品A，具体产品B）
+
+```java
+// 抽象产品A，B
+public interface ProductA {}
+
+public interface ProductB {}
+// 具体产品A1，B1，A2，B2
+public class CNProductA implements ProductA {}
+public class CNProductB implements ProductB {}
+
+public class USProductA implements ProductA {}
+public class USProductB implements ProductB {}
+```
+
+再创建抽象工厂和具体工厂
+
+```java
+// 抽象工厂
+public interface Factory {
+    public ProductA createProductA(String name);
+    public ProductB createProductB(String name);
+}
+
+// 具体工厂 CN
+public class CNFactory implements Factory {
+    @Override
+    public ProductA createProductA(String name) {
+        return new CNProductA();
+    }
+
+    @Override
+    public ProductB createProductB(String name) {
+        return new CNProductB();
+    }
+}
+
+// 具体工厂 US
+public class USFactory implements Factory {
+    @Override
+    public ProductA createProductA(String name) {
+        return new USProductA();
+    }
+
+    @Override
+    public ProductB createProductB(String name) {
+        return new USProductB();
+    }
+}
+```
+
+客户端：
+
+```java
+public class Client {
+    public static void main(String[] args) {
+        Factory cnFactory = new CNFactory();
+        Factory usFactory = new USFactory();
+
+        ProductA cnProductA = cnFactory.createProductA("cn product A");
+        ProductB cnProductB = cnFactory.createProductB("cn product B");
+
+        ProductA usProductA = usFactory.createProductA("us product A");
+        ProductB usProductB = usFactory.createProductB("us product B");
+
+        cnProductA.printName();
+        cnProductB.printName();
+        usProductA.printName();
+        usProductB.printName();
+    }
+}
+```
