@@ -50,6 +50,19 @@
         - [Java join()方法](#java-join方法)
         - [单例模式](#单例模式)
         - [抽象工厂模式](#抽象工厂模式)
+- [Java 基础](#java-基础)
+    - [垃圾回收机制](#垃圾回收机制)
+    - [类加载机制](#类加载机制)
+        - [加载](#加载)
+        - [验证](#验证)
+        - [准备](#准备)
+        - [解析](#解析)
+        - [初始化](#初始化)
+    - [类和类加载器](#类和类加载器)
+    - [对象的创建，对象的内存布局，对象的访问定位](#对象的创建对象的内存布局对象的访问定位)
+    - [Java NIO](#java-nio)
+    - [Spring](#spring)
+        - [Spring MVC 流程](#spring-mvc-流程)
 
 <!-- /TOC -->
 
@@ -212,13 +225,16 @@ public final int getAndUpdate(int x) {
 - 线程本地存储
   - java.lang.ThreadLocal 类
 
-以 ThreadLocal对象为键，任意对象为值的存储结构 一个线程可以根据一个ThreadLocal对象查询到绑定在这个线程上的值
-
 ThreadLocal
 
-- 在每个线程 Thread 内部有一个ThreadLocal.ThreadLocalMap类型的成员变量threadLocals，这个threadLocals就是用来存储实际的变量副本的，键值为当前ThreadLocal变量，value为变量副本（即T类型的变量）
-- 初始时，在Thread里面，threadLocals为空，当通过ThreadLocal变量调用get()方法或者set()方法，就会对Thread类中的threadLocals进行初始化，并且以当前ThreadLocal变量为键值，以ThreadLocal要保存的副本变量为value，存到threadLocals
+- 在每个线程 Thread 内部有一个 `ThreadLocal.ThreadLocalMap` 类型的成员变量threadLocals，这个threadLocals就是用来存储实际的变量副本的，键值为当前ThreadLocal变量，value为变量副本（即T类型的变量）
+- 初始时，在线程里面，threadLocals为空，当通过 `ThreadLocal` 变量调用get()方法或者set()方法，就会对Thread类中的threadLocals进行初始化，并且以当前ThreadLocal变量为键值，以ThreadLocal要保存的副本变量为value，存到threadLocals
 - 然后在当前线程里面，如果要使用副本变量，就可以通过get方法在threadLocals里面查找
+
+- set方法：向获取当前线程并拿到线程私有的 ThreadLocalMap，将调用该方法的 ThreadLocal 对象作为键，要保存的复本变量作为 value 存入 Map
+- get方法：先获取当前线程并拿到线程私有的 ThreadLocalMap，将调用该方法的 ThreadLocal 对象作为键 从 Map 中取出
+
+这个Map 没有使用拉链法解决 Hash 冲突，而是增加一个固定的大小
 
 ```java
 public T get() {
@@ -371,6 +387,39 @@ synchronized 用的锁存在 Java 对象头里的
 #### 中断与synchronized
 
 线程的中断操作对于正在等待获取的锁对象的 synchronized 方法或者代码块并不起作用，也就是对于 synchronized 来说，如果一个线程在等待锁，那么结果只有两种，要么它获得这把锁继续执行，要么它就保存等待，即使调用中断线程的方法，也不会生效
+
+通过调用一个线程的 interrupt() 来中断该线程，如果该线程处于阻塞、限期等待或者无限期等待状态，那么就会抛出 InterruptedException，从而提前结束该线程。但是不能中断 I/O 阻塞和 synchronized 锁阻塞。
+
+```java
+//中断线程（实例方法）
+public void Thread.interrupt();
+
+//判断线程是否被中断（实例方法）
+public boolean Thread.isInterrupted();
+
+//判断是否被中断并清除当前中断状态（静态方法）
+public static boolean Thread.interrupted();
+```
+
+中断两种情况：
+
+- 一种是当线程处于阻塞状态或者试图执行一个阻塞操作时，我们可以使用实例方法interrupt()进行线程中断，执行中断操作后将会抛出interruptException异常(该异常必须捕捉无法向外抛出)并将中断状态复位
+- 另外一种是当线程处于运行状态时，我们也可调用实例方法interrupt()进行线程中断，但同时必须手动判断中断状态，并编写中断线程的代码(其实就是结束run方法体的代码)
+
+兼顾两种情况：
+
+```java
+public void run() {
+    try {
+    //判断当前线程是否已中断,注意interrupted方法是静态的,执行后会对中断状态进行复位
+    while (!Thread.interrupted()) {
+        TimeUnit.SECONDS.sleep(2);
+    }
+    } catch (InterruptedException e) {
+
+    }
+}
+```
 
 #### 等待唤醒机制与synchronized
 
@@ -1184,3 +1233,569 @@ public class Client {
     }
 }
 ```
+
+# Java 基础
+
+[Java 基础](https://github.com/CyC2018/CS-Notes/blob/master/docs/notes/Java%20%E5%9F%BA%E7%A1%80.md)
+
+[Java 容器](https://github.com/CyC2018/CS-Notes/blob/master/docs/notes/Java%20%E5%AE%B9%E5%99%A8.md)
+
+```java
+// 取模操作
+// `y & (x - 1)` 等价于 `y % x`
+static int indexFor(int h, int length) {
+    return h & (length-1);
+}
+```
+
+```java
+// 以下是 HashMap 中计算数组容量的代码
+// n = 11011000 计算到 n |= n >>> 4， n = 11111111
+// n = 00001010 计算到 n |= n >>> 2， n = 00001111
+// 此时 n + 1 是大于原始数字的最小的 2 的 n 次方。
+static final int tableSizeFor(int cap) {
+    int n = cap - 1;
+    n |= n >>> 1;
+    n |= n >>> 2;
+    n |= n >>> 4;
+    n |= n >>> 8;
+    n |= n >>> 16;
+    return (n < 0) ? 1 : (n >= MAXIMUM_CAPACITY) ? MAXIMUM_CAPACITY : n + 1;
+}
+```
+
+java String
+
+```java
+public class TestString{
+    public static void main(String args[]){
+        String str1 = "abc";
+        String str2 = new String("abc");
+        String str3 = s2.intern();
+
+        System.out.println( str1 == str2 );   //false
+        System.out.println( str1 == str3 );   //true
+    }
+}
+// String str1 = “abc”，str1 引用的是 常量池（方法区） 的对象；而 String str2 = new String(“abc”)，str2引用的是 堆 中的对象，所以内存地址不一样。但是由于内容一样，所以 str1 和 str3 指向同一对象。
+```
+
+```java
+String s1 = "abc";
+//↑ 在字符串池创建了一个对象  
+String s2 = "abc";
+//↑ 字符串pool已经存在对象“abc”(共享),所以创建0个对象，累计创建一个对象  
+System.out.println("s1 == s2 : "+(s1==s2));
+//↑ true 指向同一个对象，  
+System.out.println("s1.equals(s2) : " + (s1.equals(s2)));
+//↑ true  值相等
+
+String s3 = new String("abc");  
+//↑ 创建了两个对象，一个存放在字符串池中，一个存在与堆区中；  
+//↑ 还有一个对象引用s3存放在栈中  
+String s4 = new String("abc");  
+//↑ 字符串池中已经存在“abc”对象，所以只在堆中创建了一个对象  
+System.out.println("s3 == s4 : "+(s3==s4));  
+//↑false   s3和s4栈区的地址不同，指向堆区的不同地址；  
+System.out.println("s3.equals(s4) : "+(s3.equals(s4)));  
+//↑true  s3和s4的值相同  
+System.out.println("s1 == s3 : "+(s1==s3));  
+//↑false 存放的地区都不同，一个方法区，一个堆区  
+System.out.println("s1.equals(s3) : "+(s1.equals(s3)));  
+//↑true  值相同
+
+String str2 = "ab";  //1个对象  
+String str3 = "cd";  //1个对象
+String str4 = str2 + str3;
+String str5 = "abcd";
+System.out.println("str4 = str5 : " + (str4==str5)); // false  
+// 引用str4和str5指向的对象的地址必定不一样
+// 三个在字符串常量池中的String对象、一个在堆中的String对象和一个在堆中的StringBuilder对象。
+// 调用 String 类的静态方法 String.valueOf() 将 str2 转换为字符串表示；
+// JVM 在堆中创建一个 StringBuilder对象，同时用str2指向转换后的字符串对象进行初始化；
+// 调用StringBuilder对象的append方法完成与str3所指向的字符串对象的合并；
+// 调用 StringBuilder 的 toString() 方法在堆中创建一个 String对象；
+// 将刚刚生成的String对象的堆地址存赋给局部变量引用str4。
+
+String str1 = "ab" + "cd";  //1个对象  
+String str11 = "abcd";
+System.out.println("str1 = str11 : "+ (str1 == str11));   // true
+
+final String str8 = "cd";  
+String str9 = "ab" + str8;  
+String str89 = "abcd";  
+System.out.println("str9 = str89 : "+ (str9 == str89));     // true
+//↑str8为常量变量，编译期会被优化  
+// 常量+字面值”的组合，其值在编译的时候就能够被确定了
+
+String str6 = "b";  
+String str7 = "a" + str6;  
+String str67 = "ab";  
+System.out.println("str7 = str67 : "+ (str7 == str67));     // false
+//↑str6为变量，在运行期才会被解析。
+```
+
+```java
+public static void main(String args[])
+{
+    String s = "abc";            // 编译期优化
+    String s1 = "a";
+    String s2 = "b";
+    String s3 = "c";
+    String s4 = s1 + s2 + s3;
+
+    //底层使用 StringBuilder 进行字符串的拼接
+    String s4 = (new StringBuilder(String.valueOf(s1))).append(s2).append(s3).toString();
+    System.out.println(s);
+    System.out.println(s4);
+}
+```
+
+```java
+public static void main(String args[]) {
+    String s = null;
+    for(int i = 0; i < 100; i++) {
+        s += "a";
+        // s = (new StringBuilder(String.valueOf(s))).append("a").toString();
+    }
+}
+```
+
+hashcode() 和 equal()
+
+- 相等（相同）的对象必须具有相等的哈希码（或者散列码）。
+- 如果两个对象的hashCode相同，它们并不一定相同。
+
+## 垃圾回收机制
+
+判断一个对象是否可被回收
+
+- 1.引用计数算法
+- 2.可达性分析算法 可达的对象是存活的，不可达的对象是可被回收的
+  - 可以作为GCRoot的对象包括：虚拟机栈中引用的对象，方法区中类静态属性引用的对象，方法区中常量引用的对象，本地方法栈中JNI引用的对象
+
+引用类型：
+
+- 强引用：程序代码中普遍存在的，类似 `Object obj = new Object()`，只要强引用在垃圾收集器永远不会回收被引用的对象
+- 软引用：描述一些还有用但非必需的对象，对于软引用关联着的对象，在系统将要发生内存溢出之前，将会把这些对象列进回收范围之中，进行第二次回收
+- 弱引用：描述非必需的对象，被弱引用关联的对象只能生存到下一个垃圾回收之前
+- 虚引用：能够在这个对象被垃圾收集器回收时收到一个系统通知
+
+方法区回收，主要是对常量池的回收和对类的卸载。
+
+类卸载至少要满足三个条件
+
+- 该类所有的实例都已经被回收，此时堆中不存在该类的任何实例。
+- 加载该类的 ClassLoader 已经被回收。
+- 该类对应的 Class 对象没有在任何地方被引用，也就无法在任何地方通过反射访问该类方法。
+
+为什么要分代？
+
+- 标记和压缩JVM中的所有对象效率低
+- 随着越来越多的对象被分配，对象列表会越来越长，导致垃圾收集时间越来越长
+- 大部分对象是短暂的
+
+新生代：复制算法
+
+- Minor GC
+
+老年代：标记清除算法或标记整理算法
+
+- Major GC
+- 慢因为涉及到所有的存活对象
+
+永久代：应用程序中使用的类和方法所需的元数据，运行时应用程序使用的类，JavaSE库的类和方法
+
+垃圾回收流程：
+
+- 1.任何新对象分配在新生代Eden空间，两个Survivor空间都是空的
+- 2.当Eden空间填满，会触发Minor GC
+- 3.引用的对象被移动到第一个Survivor空间 S0，清除Eden空间，删除未引用的对象
+- 4.在下一次Minor GC时会发生相同的事，删除未引用对象，它们被移动到第二个Survivor空间 S1
+- 此时来自 S0 的最后一个 Minor GC 中的对象年龄增加1，移动到 S1 中，一旦所有幸存的对象都移动到 S1 中，S0 和Eden会被清除，这时在 S1 中有不同年龄的对象
+- 5.下一次Minor GC时，重复相同的过程，被引用的对象会被移动到另外一个S0，幸存对象老化，清空Eden和S1
+- 6.在Minor GC之后，当老化的对象达到一定的年龄阈值时，它们从年轻代移入老年代
+- 7.随着Minor GC发生，对象被陆续移动到老年代中
+- 8.最终老年代进行整理和压缩空间，大对象直接进入老年代
+
+动态对象年龄判定
+
+如果在 Survivor 中相同年龄所有对象大小的总和大于 Survivor 空间的一半，则年龄大于或等于该年龄的对象可以直接进入老年代
+
+空间分配担保
+
+在发生 Minor GC 之前，虚拟机先检查老年代最大可用的连续空间是否大于新生代所有对象总空间
+
+- 如果条件成立的话，那么 Minor GC 可以确认是安全的。
+- 如果不成立的话虚拟机会查看 HandlePromotionFailure 设置值是否允许担保失败
+  - 如果允许那么就会继续检查老年代最大可用的连续空间是否大于历次晋升到老年代对象的平均大小
+    - 如果大于，将尝试着进行一次 Minor GC
+    - 如果小于，进行 Major GC
+  - 不允许冒险，那么就要进行一次 Major GC。
+
+CPU资源敏感，注重高吞吐量的场合 优先考虑 Parallel Scavenge 和 Parallel Old收集器
+
+- **Serial收集器** (复制算法)
+  - 新生代单线程收集器，标记和清理都是单线程，优点是简单高效。是client级别默认的GC方式，可以通过 `-XX:+UseSerialGC` 来强制指定。
+- **Serial Old收集器** (标记-整理算法)
+  - 老年代单线程收集器，Serial收集器的老年代版本。
+- **ParNew收集器** (复制算法)
+  - 新生代收集器，可以认为是Serial收集器的多线程版本,在多核CPU环境下有着比Serial更好的表现。
+- **Parallel Scavenge收集器** (停止-复制算法)
+  - 并行收集器，追求高吞吐量，高效利用CPU。吞吐量一般为99%， 吞吐量= 用户线程时间/(用户线程时间+GC线程时间)。适合后台应用等对交互相应要求不高的场景。是server级别默认采用的GC方式，
+- **Parallel Old收集器** (标记-整理算法)
+  - Parallel Scavenge收集器的老年代版本，并行收集器，吞吐量优先。
+- **CMS(Concurrent Mark Sweep)收集器** (标记-清除算法)
+  - 获取最短回收停顿时间为目的的收集器
+  - 四个过程，初始标记（停顿） - 并发标记 - 重新标记（停顿） - 并发清除
+  - 缺点：吞吐量低，cpu利用率不高，无法处理浮动垃圾，标记-清除算法导致空间碎片，老年代无法找到足够大的连续空间，不得不Full GC
+- **G1** (整体上是标记-整理算法，局部是基于复制算法实现的，这意味着运行期间不会产生内部空间碎片)
+  - 面向服务端应用的垃圾回收器
+  - 四个过程，初始标记 - 并发标记 - 最终标记 - 筛选回收
+  - 特点：并行与并发（多核环境缩短停顿时间），分代收集（更好的收集效果），空间整合，可预测的停顿（预测停顿时间）
+
+## 类加载机制
+
+虚拟机把描述类的数据从Class文件加载到内存，并对数据进行校验，转换解析和初始化最终形成可以被虚拟机直接使用的Java类型，这就是虚拟机的类加载机制
+
+- 加载（Loading）
+- 验证（Verification）
+- 准备（Preparation）
+- 解析（Resolution）
+- 初始化（Initialization）
+- 使用（Using）
+- 卸载（Unloading）
+
+类加载时机：5种情况必须对类进行初始化（主动引用）
+
+- new getstatic putstatic invokestatic 4条字节码指令，即new关键字实例化对象的时候，读取或设置一个类的静态字段的时候，调用一个类的静态方法的时候
+- java.lang.reflect包对类进行反射调用，如果类没有初始化就需要先初始化
+- 父类未初始化，触发父类的初始化，接口在初始化时并不要求其父接口全部完成了初始化，只有在真正使用到父接口的时候才会初始化
+- 虚拟机启动时，用户需要指定一个要执行的主类，虚拟机会先初始化这个主类
+- 方法句柄对应的类没有初始化，需要先触发初始化
+
+被动引用
+
+- 通过子类引用父类的静态字段，不会导致子类的初始化
+- 通过数组定义来引用类不会触发类的初始化
+- 常量在编译阶段会存入调用类的常量池中，本质上没有直接引用到定义常量的类，因此不会触发定义常量的类的初始化
+
+### 加载
+
+过程完成以下三件事
+
+- 通过类的完全限定名称获取定义该类的二进制字节流。
+- 将该字节流表示的静态存储结构转换为方法区的运行时存储结构。
+- 在内存中生成一个代表该类的 java.lang.Class 对象，作为方法区中该类各种数据的访问入口。
+
+其中二进制字节流可以从以下方式中获取：
+
+- 从 ZIP 包读取，成为 JAR、EAR、WAR 格式的基础。
+- 从网络中获取，最典型的应用是 Applet。
+- 运行时计算生成，例如动态代理技术，在 java.lang.reflect.Proxy 使用 ProxyGenerator.generateProxyClass 的代理类的二进制字节流。
+- 由其他文件生成，例如由 JSP 文件生成对应的 Class 类。
+- 从数据库中读取 中间件服务器，把程序安装到数据库完成程序代码在集群间的分发
+
+数组加载，如果数组元素是引用类型，数组将在加载该组件类型的类加载器的类名称空间上被表示
+如果数组元素不是引用类型，Java虚拟机会把数组C标记为与引导类加载器关联
+
+### 验证
+
+确保 Class 文件的字节流中包含的信息符合当前虚拟机的要求，并且不会危害虚拟机自身的安全。
+
+- 文件格式验证
+  - 是否以魔数开头
+  - 常量池的常量中是否有不被支持的常量类型
+- 元数据验证
+  - 这个类是否有父类
+  - 这个类的父类是否继承了不允许被继承的类
+- 字节码验证
+  - 保证任意时刻操作数栈的数据类型和指令代码序列都能配合工作
+- 符号引用验证
+  - 符号引用中通过字符串描述的全限定名是否能够找到对应的类
+  - 符号引用中类，字段，方法的访问性
+
+访问权限 | 本类 | 本包的类 | 子类 | 非子类的外包类
+| --- | --- | --- | --- | --- |
+public | 是 | 是 | 是 | 是
+protected | 是 | 是 | 是 | 否
+default | 是 | 是 | 否 | 否
+private | 是 | 否 | 否 | 否
+
+### 准备
+
+正式为类变量（static修饰）分配内存并设置类变量初始值的阶段，这些变量所使用的内存都在方法区中被分配
+
+实例变量不会在这阶段分配内存，它会在对象实例化时随着对象一起被分配在堆中。应该注意到，实例化不是类加载的一个过程，类加载发生在所有实例化操作之前，并且类加载只进行一次，实例化可以进行多次。
+
+```java
+// 初始值一般为 0 值，例如下面的类变量 value 被初始化为 0 而不是 123。
+public static int value = 123;
+// 类变量是常量，那么它将初始化为表达式所定义的值而不是 0。例如下面的常量 value 被初始化为 123 而不是 0。
+public static final int value = 123;
+```
+
+### 解析
+
+将常量池的符号引用替换为直接引用的过程。
+
+- 符号引用：符号引用和虚拟机的布局无关，一组符号来描述引用的目标，符号引用可以是任何形式的字面量，无歧义地定位到目标即可，目标可能未加载到内存中
+- 直接引用：直接引用和虚拟机的布局相关，可以是直接指向目标的指针、相对偏移量、一个间接定位到对象的句柄，目标一定加载到内存中
+
+- 类或接口解析
+- 字段解析
+- 类方法解析
+- 接口方法解析
+
+### 初始化
+
+初始化阶段才真正开始执行类中定义的 Java 程序代码，初始化阶段是虚拟机执行类构造器 `<clinit>()` 方法的过程，在准备阶段，类变量已经赋过一次系统要求的初始值，而在初始化阶段，根据程序员通过程序制定的主观计划去**初始化类变量**和其它资源。
+
+- `<clinit>()` 方法是由编译器自动收集类中所有 类变量的赋值动作 和 静态语句块的语句 合并产生的，编译器收集的顺序是由语句在源文件中出现的顺序所决定的
+- `<clinit>()` 保证在子类的 `<clinit>()` 方法执行之前，父类的 `<clinit>()` 方法已经执行了
+- 由于父类的 `<clinit>()` 方法先执行，也就意味着父类中定义的静态语句块的执行要优先于子类
+- 如果一个类没有静态语句块，也没有对变量的赋值操作，那么编译器可以不为这个类生成 `<clinit>()` 方法
+- 接口中不可以使用静态语句块，但仍然有类变量初始化的赋值操作，因此接口与类一样都会生成 `<clinit>()` 方法。但接口与类不同的是，执行接口的 `<clinit>()` 方法不需要先执行父接口的 `<clinit>()` 方法。只有当父接口中定义的变量使用时，父接口才会初始化。另外，接口的实现类在初始化时也一样不会执行接口的 `<clinit>()` 方法。
+- 虚拟机会保证一个类的 `<clinit>()` 方法在多线程环境下被正确的加锁和同步，如果多个线程同时初始化一个类，只会有一个线程执行这个类的 `<clinit>()` 方法，其它线程都会阻塞等待，直到活动线程执行 `<clinit>()` 方法完毕。如果在一个类的 `<clinit>()` 方法中有耗时的操作，就可能造成多个线程阻塞，在实际过程中此种阻塞很隐蔽。
+
+## 类和类加载器
+
+两个类相等，需要类本身相等，并且使用同一个类加载器进行加载。这是因为每一个类加载器都拥有一个独立的类名称空间。
+
+这里的相等，包括类的 Class 对象的 equals() 方法、isAssignableFrom() 方法、isInstance() 方法的返回结果为 true，也包括使用 instanceof 关键字做对象所属关系判定结果为 true。
+
+从 Java 虚拟机的角度来讲，只存在以下两种不同的类加载器：
+
+- 启动类加载器（Bootstrap ClassLoader），使用 C++ 实现，是虚拟机自身的一部分；
+- 所有其它类的加载器，使用 Java 实现，独立于虚拟机，继承自抽象类 java.lang.ClassLoader。
+
+从 Java 开发人员的角度看，类加载器可以划分得更细致一些：
+
+**启动类加载器（Bootstrap ClassLoader）** 此类加载器负责将存放在 <JRE_HOME>/lib 目录中的，或者被 -Xbootclasspath 参数所指定的路径中的，并且是虚拟机识别的（仅按照文件名识别，如 rt.jar，名字不符合的类库即使放在 lib 目录中也不会被加载）类库加载到虚拟机内存中。启动类加载器无法被 Java 程序直接引用，用户在编写自定义类加载器时，如果需要把加载请求委派给启动类加载器，直接使用 null 代替即可。
+
+**扩展类加载器（Extension ClassLoader）** 这个类加载器是由 ExtClassLoader（sun.misc.Launcher$ExtClassLoader）实现的。它负责将 <JAVA_HOME>/lib/ext 或者被 java.ext.dir 系统变量所指定路径中的所有类库加载到内存中，开发者可以直接使用扩展类加载器。
+
+**应用程序类加载器（Application ClassLoader）** 这个类加载器是由 AppClassLoader（sun.misc.Launcher$AppClassLoader）实现的。由于这个类加载器是 ClassLoader 中的 getSystemClassLoader() 方法的返回值，因此一般称为系统类加载器。它负责加载用户类路径（ClassPath）上所指定的类库，开发者可以直接使用这个类加载器，如果应用程序中没有自定义过自己的类加载器，一般情况下这个就是程序中默认的类加载器。
+
+**双亲委派模型（Parents Delegation Model）** 该模型要求除了顶层的启动类加载器外，其它的类加载器都要有自己的父类加载器。类加载器之间的父子关系一般通过组合关系（Composition）来实现，而不是继承关系（Inheritance）。
+
+工作流程：一个类加载器首先将类加载请求转发到父类加载器，只有当父类加载器无法完成时才尝试自己加载。
+
+好处：使得 Java 类随着它的类加载器一起具有一种带有优先级的层次关系，从而使得基础类得到统一。
+
+Tomcat:
+
+- /common/*: 类库可被tomcat和所有的web应用程序共同使用
+- /server/*: 类库可被tomcat使用，对所有web应用不可见
+- /shared/*: 类库可以被所有的web应用使用，对tomcat不可见
+- /WEB-INF/*: 仅被此web应用使用，tomcat和其他应用不可见
+
+jsp热替换，当服务器检测到JSP文件被修改，会替换掉目前的JasperLoader的实例，并通过再建立一个新的JSP类加载器来实现
+
+OSGi 灵活的类加载结构
+
+## 对象的创建，对象的内存布局，对象的访问定位
+
+对象的创建时机：
+
+- 使用new关键字创建对象
+- 使用Class类的newInstance方法(反射机制)
+- 使用Constructor类的newInstance方法(反射机制)
+- 使用clone方法创建对象
+- 使用(反)序列化机制创建对象
+
+1. 遇到new指令时，首先检查这个指令的参数是否能在常量池中定位到一个类的符号引用，并检查这个类是否已经能够被加载、解析、初始化
+2. 为对象分配内存，指针碰撞分配方式和空闲链表两种方式，取决于垃圾回收器是否带有压缩整理的功能
+3. 除了如何分配空间的问题，还有线程安全的问题，一种是 CAS配上失败重试保证原子性，另一种是把内存分配的动作按照线程划分不同空间之中进行，TLAB用完才同步
+4. 初始化为零值
+5. 设置类，如这个对象是哪个类的实例，如何才能找到类的元数据，对象的hash码，gc分代年龄，存在对象头中
+6. 执行 `<init>` 方法，把对象按照程序员的意向初始化
+
+- 首先实例化Object类，再依次对以下各类进行实例化，直到完成对目标类的实例化。
+- 具体而言，在实例化每个类时，都遵循如下顺序：先依次执行 实例变量初始化 和 实例代码块初始化，再执行构造函数初始化。
+- 也就是说，编译器会将 实例变量初始化 和 实例代码块初始化 相关代码 放到类的构造函数中去，并且这些代码会被放在对超类构造函数的调用语句之后，构造函数本身的代码之前。
+
+对象的内存布局
+
+对象在内存中3块区域， 对象头，实例数据和对齐填充
+
+- 对象头 第一部分用于存储对象自身的运行时数据，另一部分是类型指针
+- 实例数据 代码中定义的各种类型字段内容
+- 补齐
+
+对象的访问定位
+
+栈上的reference数据来操作堆上的具体对象
+
+- 句柄 堆中划分出一块内存作为句柄池，reference存储的是对象的句柄地址，而句柄中包含了对象实例数据和类型数据的具体地址
+- 直接指针 reference存储的是对象实例数据，实例数据中包含到对象类型数据的指针
+
+```java
+public class Student implements Cloneable, Serializable {
+
+    private int id;
+
+    public Student() {
+
+    }
+
+    public Student(Integer id) {
+        this.id = id;
+    }
+
+    @Override
+    protected Object clone() throws CloneNotSupportedException {
+        // TODO Auto-generated method stub
+        return super.clone();
+    }
+
+    @Override
+    public String toString() {
+        return "Student [id=" + id + "]";
+    }
+
+    public static void main(String[] args) throws Exception {
+
+        System.out.println("使用new关键字创建对象：");
+        Student stu1 = new Student(123);
+        System.out.println(stu1);
+        System.out.println("\n---------------------------\n");
+
+
+        System.out.println("使用Class类的newInstance方法创建对象：");
+        Student stu2 = Student.class.newInstance();    //对应类必须具有无参构造方法，且只有这一种创建方式
+        System.out.println(stu2);
+        System.out.println("\n---------------------------\n");
+
+        System.out.println("使用Constructor类的newInstance方法创建对象：");
+        Constructor<Student> constructor = Student.class
+                .getConstructor(Integer.class);   // 调用有参构造方法
+        Student stu3 = constructor.newInstance(123);   
+        System.out.println(stu3);
+        System.out.println("\n---------------------------\n");
+
+        System.out.println("使用Clone方法创建对象：");
+        Student stu4 = (Student) stu3.clone();
+        System.out.println(stu4);
+        System.out.println("\n---------------------------\n");
+
+        System.out.println("使用(反)序列化机制创建对象：");
+        // 写对象
+        ObjectOutputStream output = new ObjectOutputStream(
+                new FileOutputStream("student.bin"));
+        output.writeObject(stu4);
+        output.close();
+
+        // 读取对象
+        ObjectInputStream input = new ObjectInputStream(new FileInputStream(
+                "student.bin"));
+        Student stu5 = (Student) input.readObject();
+        System.out.println(stu5);
+
+    }
+}
+```
+
+## Java NIO
+
+[Java I/O](https://github.com/CyC2018/CS-Notes/blob/master/docs/notes/Java%20IO.md)
+
+## Spring
+
+IOC 控制反转：通过容器来控制业务对象之间的依赖关系，而非传统实现中，由代码直接控制。这也就是“控制反转”概念所在;控制权由应用代码转到了外部容器，控制权的转移，就是反转。控制权转移带来的好处就是降低了业务对象之间的依赖程度
+
+AOP 面向切面：切面实现了横向关注点（跨多个应用对象的逻辑）的模块化，我们在一个地方定义通用功能，可以通过声明的方式定义这个功能要以何种方式在何应用，而无需修改受影响的类
+
+动态代理：
+
+静态代理方式需要为每个接口实现一个代理类，而这些代理类中的代码几乎是一致的。这在大型系统中将会产生很大的维护问题
+
+创建Subject类型接口和我们要代理的真实对象：
+
+```java
+public interface Subject {
+    public void rent();
+    public void hello();
+}
+
+public class RealSubject implements Subject {
+    public void rent() {
+        System.out.println("I want to rent my house");
+    }
+
+    @Override
+    public void hello(String str) {
+        System.out.println("hello: " + str);
+    }
+}
+```
+
+定义动态代理类：
+
+```java
+public class DynamicProxy implements InvocationHandler {
+    // 这个就是我们要代理的真实对象
+    private Object subject;
+
+    // 构造方法，给我们要代理的真实对象赋初值
+    public DynamicProxy(Object subject) {
+        this.subject = subject;
+    }
+
+    @Override
+    public Object invoke(Object object, Method method, Object[] args) throws Throwable {
+        // 在代理真实对象前我们可以添加一些自己的操作
+        System.out.println("before rent house");
+
+        System.out.println("Method:" + method);
+
+        // 当代理对象调用真实对象的方法时，其会自动的跳转到代理对象关联的handler对象的invoke方法来进行调用
+        method.invoke(subject, args);
+
+        // 在代理真实对象后我们也可以添加一些自己的操作
+        System.out.println("after rent house");
+
+        return null;
+    }
+}
+```
+
+```java
+public class Client {
+    public static void main(String[] args) {
+        // 我们要代理的真实对象
+        Subject realSubject = new RealSubject();
+
+        // 我们要代理哪个真实对象，就将该对象传进去，最后是通过该真实对象来调用其方法的
+        InvocationHandler handler = new DynamicProxy(realSubject);
+
+        /*
+         * 通过Proxy的newProxyInstance方法来创建我们的代理对象，我们来看看其三个参数
+         * 第一个参数 handler.getClass().getClassLoader() ，我们这里使用handler这个类的ClassLoader对象来加载我们的代理对象
+         * 第二个参数realSubject.getClass().getInterfaces()，我们这里为代理对象提供的接口是真实对象所实行的接口，表示我要代理的是该真实对象，这样我就能调用这组接口中的方法了
+         * 第三个参数handler， 我们这里将这个代理对象关联到了上方的 InvocationHandler 这个对象上
+         */
+        Subject subject = (Subject)Proxy.newProxyInstance(handler.getClass().getClassLoader(), realSubject
+                .getClass().getInterfaces(), handler);
+
+        System.out.println(subject.getClass().getName());
+
+        subject.rent();
+        subject.hello("world");
+    }
+}
+```
+
+### Spring MVC 流程
+
+1. 用户发送请求至前端控制器DispatcherServlet。
+2. DispatcherServlet收到请求调用HandlerMapping处理器映射器。
+3. 处理器映射器找到具体的处理器(可以根据xml配置、注解进行查找)，生成处理器对象及处理器拦截器(如果有则生成)一并返回给DispatcherServlet。
+4. DispatcherServlet调用HandlerAdapter处理器适配器。
+5. HandlerAdapter经过适配调用具体的处理器(Controller，也叫后端控制器)。
+6. Controller执行完成返回ModelAndView。
+7. HandlerAdapter将controller执行结果ModelAndView返回给DispatcherServlet。
+8. DispatcherServlet将ModelAndView传给ViewReslover视图解析器。
+9. ViewReslover解析后返回具体View。
+10. DispatcherServlet根据View进行渲染视图（即将模型数据填充至视图中）。
+11. DispatcherServlet响应用户

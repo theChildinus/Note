@@ -869,19 +869,23 @@ public int longestConsecutive(int[] nums) {
 
 ```java
 public int lengthOfLIS(int[] nums) {
-    if (nums.length  == 0) return 0;
-    int n = nums.length;
-    int[] dp = new int[n];
-    Arrays.fill(dp, 1);
-    int ans = 1;
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < i; j++) {
-            int cur = nums[j] < nums[i] ? (dp[j] + 1) : 1;
-            dp[i] = Math.max(cur, dp[i]);
-            ans = Math.max(dp[i], ans);
-        }
+    if (nums.length == 0) {
+        return 0;
     }
-    return ans;
+    int[] dp = new int[nums.length];
+    dp[0] = 1;
+    int maxans = 1;
+    for (int i = 1; i < dp.length; i++) {
+        int maxval = 0;
+        for (int j = 0; j < i; j++) {
+            if (nums[i] > nums[j]) {
+                maxval = Math.max(maxval, dp[j]);
+            }
+        }
+        dp[i] = maxval + 1;
+        maxans = Math.max(maxans, dp[i]);
+    }
+    return maxans;
 }
 ```
 
@@ -1495,6 +1499,59 @@ public String longestPalindrome(String s) {
 }
 ```
 
+### 问题：Valid Palindrome II
+
+题号：680
+
+```java
+public boolean validPalindrome(String s) {
+    int i = -1, j = s.length();
+    while (++i < --j) {
+        if (s.charAt(i) != s.charAt(j)) {
+            return isPalindrome(s, i, j - 1) || isPalindrome(s, i + 1, j);
+        }
+    }
+    return true;
+}
+
+private boolean isPalindrome(String s, int i, int j) {
+    while (i < j) {
+        if (s.charAt(i++) != s.charAt(j--)) {
+            return false;
+        }
+    }
+    return true;
+}
+```
+
+### 问题：Palindromic Substrings
+
+```txt
+Input: "aaa"
+Output: 6
+Explanation: Six palindromic strings: "a", "a", "a", "aa", "aa", "aaa".
+```
+
+```java
+private int cnt = 0;
+
+public int countSubstrings(String s) {
+    for (int i = 0; i < s.length(); i++) {
+        extendSubstrings(s, i, i);     // 奇数长度
+        extendSubstrings(s, i, i + 1); // 偶数长度
+    }
+    return cnt;
+}
+
+private void extendSubstrings(String s, int start, int end) {
+    while (start >= 0 && end < s.length() && s.charAt(start) == s.charAt(end)) {
+        start--;
+        end++;
+        cnt++;
+    }
+}
+```
+
 ### 问题：Generate Parentheses
 
 题号：22
@@ -1663,34 +1720,26 @@ Explanation: The answer is "wke", with the length of 3.
              Note that the answer must be a substring, "pwke" is a subsequence and not a substring.
 ```
 
+滑动窗口解法：未重复时移动后一个指针，重复时移动前一个指针
+
 ```java
 public int lengthOfLongestSubstring(String s) {
-    if (s == null || s.length() == 0) {
-        return 0;
-    }
-    int left = 0; int right = 0; int count = 0;
-    int maxLen = Integer.MIN_VALUE;
-    int[] hash = new int[128];
-
-    //这里没有模式串，不做计数
-
-    while (right < s.length()) {
-        // 先对当前元素计数
-        char c1 = s.charAt(right++);
-        hash[c1]++;
-        // 元素如果第二次出现，count++
-        if (hash[c1] > 1) count++;
-
-        while (count > 0) {
-            char c2 = s.charAt(left++);
-            // 如果left所指元素是重复元素，left向后移动
-            if (hash[c2] > 1) count--;
-            hash[c2]--;
+    if (s.length() <= 1) return s.length();
+    HashSet<Character> set = new HashSet<>();
+    int first = 0;
+    int second = first;
+    int res = 0;
+    while (first < s.length() && second < s.length()) {
+        if (!set.contains(s.charAt(second))) {
+            set.add(s.charAt(second));
+            second++;
+            res = Math.max(res, second - first);
+        } else {
+            set.remove(s.charAt(first));
+            first++;
         }
-        // 外层比较最大值，内层比较最小值
-        maxLen = Math.max(maxLen, right - left);
     }
-    return maxLen == Integer.MIN_VALUE ? 0 : maxLen;
+    return res;
 }
 ```
 
@@ -1862,20 +1911,17 @@ private void preOrder(List<Integer> list, TreeNode root) {
 
 ```java
 public List<Integer> preorderTraversal(TreeNode root) {
-    List<Integer> result = new ArrayList<>();
-    Deque<TreeNode> stack = new ArrayDeque<>();
-    TreeNode p = root;
-    while(!stack.isEmpty() || p != null) {
-        if(p != null) {
-            stack.push(p);
-            result.add(p.val);  // Add before going to children
-            p = p.left;
-        } else {
-            TreeNode node = stack.pop();
-            p = node.right;
-        }
+    List<Integer> ret = new ArrayList<>();
+    Stack<TreeNode> stack = new Stack<>();
+    stack.push(root);
+    while (!stack.isEmpty()) {
+        TreeNode node = stack.pop();
+        if (node == null) continue;
+        ret.add(node.val);
+        stack.push(node.right);  // 先右后左，保证左子树先遍历
+        stack.push(node.left);
     }
-    return result;
+    return ret;
 }
 ```
 
@@ -1950,20 +1996,18 @@ private void postOrder(List<Integer> list, TreeNode root) {
 
 ```java
 public List<Integer> postorderTraversal(TreeNode root) {
-    LinkedList<Integer> result = new LinkedList<>();
-    Deque<TreeNode> stack = new ArrayDeque<>();
-    TreeNode p = root;
-    while(!stack.isEmpty() || p != null) {
-        if(p != null) {
-            stack.push(p);
-            result.addFirst(p.val);  // Reverse the process of preorder
-            p = p.right;             // Reverse the process of preorder
-        } else {
-            TreeNode node = stack.pop();
-            p = node.left;           // Reverse the process of preorder
-        }
+    List<Integer> ret = new ArrayList<>();
+    Stack<TreeNode> stack = new Stack<>();
+    stack.push(root);
+    while (!stack.isEmpty()) {
+        TreeNode node = stack.pop();
+        if (node == null) continue;
+        ret.add(node.val);
+        stack.push(node.left);
+        stack.push(node.right);
     }
-    return result;
+    Collections.reverse(ret);
+    return ret;
 }
 ```
 
@@ -2487,6 +2531,32 @@ private void subsetbackTrack(List<List<Integer>> list, List<Integer> tmplist, in
 }
 ```
 
+问题：Combination
+
+题号：77
+
+```java
+public List<List<Integer>> combine(int n, int k) {
+    List<List<Integer>> ans = new ArrayList<>();
+    helper(ans, new ArrayList<Integer>(), n, 1, k);
+    return ans;
+}
+
+private void helper(List<List<Integer>> ans, List<Integer> tmp, int n, int start, int k) {
+    if (k == 0) {
+        ans.add(new ArrayList<Integer>(tmp));
+        return;
+    }
+
+    for (int i = start; i <= n; i++) {
+        if (tmp.contains(i)) continue;
+        tmp.add(i);
+        helper(ans, tmp, n, i + 1, k - 1);
+        tmp.remove(tmp.size() - 1);
+    }
+}
+```
+
 问题：Combination Sum I II III
 
 题号：39，40，216
@@ -2557,6 +2627,8 @@ private void combineBackTrack2(List<List<Integer>> ans, List<Integer> tmplist, i
     if (target < 0) return;
 
     for (int i = start; i < nums.length; i++) {
+        // 对于[1，1，6] 第二个1是在下一层递归中添加到tmplist中的
+        // 在本层循环中，大于start的重复元素要跳过，避免重复出项相同结果
         if (i > start && nums[i] == nums[i - 1]) continue;
         tmplist.add(nums[i]);
         combineBackTrack2(ans, tmplist, nums, i + 1, target - nums[i]);
@@ -2645,7 +2717,7 @@ private void helper(List<List<Integer>> ans, List<Integer> tmp, int[][] graph, i
 
 ### 问题：Permutations 全排列 I II
 
-题号：46 47 31
+题号：46 47 31 60
 
 ```java
 public List<List<Integer>> permute(int[] nums) {
@@ -2739,6 +2811,27 @@ private void swap(int[] nums, int i, int j) {
     int tmp = nums[i];
     nums[i] = nums[j];
     nums[j] = tmp;
+}
+```
+
+60：求第k个全排列是多少
+
+```java
+public String getPermutation(int n, int k) {
+    List<Integer> list = new ArrayList<>();
+    for (int i = 1; i <= n; i++) list.add(i);
+    int[] fact = new int[n];
+    fact[0] = 1;
+    for (int i = 1; i < n; i++) fact[i] = fact[i - 1] * i;
+    k = k - 1;
+    StringBuilder sb = new StringBuilder();
+    for (int i = n; i > 0; i--) {
+        int idx = k / fact[i - 1];
+        k = k % fact[i - 1];
+        sb.append(list.get(idx));
+        list.remove(idx);
+    }
+    return sb.toString();
 }
 ```
 

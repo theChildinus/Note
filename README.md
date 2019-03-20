@@ -16,12 +16,4 @@
 
 ## :meat_on_bone: [琐碎的知识点](/knowledge.md)
 
-## :interrobang: [问题](/Question.md)
-
-选择题好难做 / w \
-
-- java基础
-- 数据结构
-- JVM
-- [并发](/JAVA并发编程.md)
-- Spring，Hadoop
+## :coffee: [Java相关](/LearnJAVA.md)
