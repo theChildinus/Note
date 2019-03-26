@@ -3553,24 +3553,26 @@ public ListNode deleteDuplicates(ListNode head) {
 
 ```java
 public ListNode deleteDuplicates(ListNode head) {
-//use two pointers, slow - track the node before the dup nodes,
-// fast - to find the last node of dups.
-    ListNode dummy = new ListNode(0), fast = head, slow = dummy;
-    slow.next = fast;
-    while(fast != null) {
-        while (fast.next != null && fast.val == fast.next.val) {
-            fast = fast.next;    //while loop to find the last node of the dups.
+    if (head == null) return head;
+    ListNode dummy = new ListNode(-1);
+    dummy.next = head;
+
+    ListNode cur = head;
+    ListNode pre = dummy;
+    while (cur != null) {
+        // 当前节点和它的下一个节点相同 cur向后移动
+        while (cur.next != null && cur.val == cur.next.val) {
+            cur = cur.next;
         }
-        // 判断的是指针地址是否相同
-        if (slow.next != fast) { //duplicates detected.
-            slow.next = fast.next; //remove the dups.
-            fast = slow.next;     //reposition the fast pointer.
-        } else { //no dup, move down both pointer.
-            slow = slow.next;
-            fast = fast.next;
+        if (pre.next == cur) {
+            pre = pre.next;
+        } else {
+            pre.next = cur.next;
         }
+        cur = cur.next;
     }
     return dummy.next;
+}
 ```
 
 ### 问题：Add Two Numbers
