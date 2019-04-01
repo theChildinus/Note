@@ -2263,6 +2263,30 @@ private boolean isValidBST(TreeNode root, long minVal, long maxVal) {
 }
 ```
 
+BST的中序遍历是一个有序序列，在中序遍历过程中记录前一个节点的位置与当前节点的值比较
+
+```java
+public boolean isValidBST(TreeNode root) {
+    Stack<TreeNode> stack = new Stack();
+    double inorder = - Double.MAX_VALUE;
+
+    while (!stack.isEmpty() || root != null) {
+        while (root != null) {
+            stack.push(root);
+            root = root.left;
+        }
+        root = stack.pop();
+        // If next element in inorder traversal
+        // is smaller than the previous one
+        // that's not BST.
+        if (root.val <= inorder) return false;
+        inorder = root.val;
+        root = root.right;
+    }
+    return true;
+}
+```
+
 ### 问题：Convert Sorted Array/List to Binary Search Tree
 
 题号：108，109
