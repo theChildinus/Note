@@ -27,7 +27,7 @@ bin
 
 ### 生成管理员凭证
 
-- 指定管理员路径：`export FABRIC_CA_CLIENT_HOME=/opt/app/fabric-ca/clients/admin`
+- 指定管理员路径：`export FABRIC_CA_CLIENT_HOME=/opt/app/fabric-ca/client/admin`
 - `mkdir -p $FABRIC_CA_CLIENT_HOME`
 - 管理员登录：`fabric-ca-client enroll -u http://admin:adminpw@localhost:7054`
 
@@ -65,19 +65,31 @@ affiliation: .
 
 指定要使用的用户的client目录：
 
-`export FABRIC_CA_CLIENT_HOME=/home/kong/goProject/src/github.com/hyperledger/fabric-ca/bin/clients/admin`
+`export FABRIC_CA_CLIENT_HOME=/home/kong/goProject/src/github.com/hyperledger/fabric-ca/bin/client/admin`
 
 注册新用户
 
 `fabric-ca-client register --id.name admin2 --id.secret admin2pw --id.affiliation org1.department1 --id.attrs 'hf.Revoker=true,admin=true:ecert'`
 
+或
+
+`fabric-ca-client register --id.name admin2 --id.secret admin2pw --id.type user --id.affiliation org1.department1 --id.attrs 'hf.Revoker=true,foo=bar'`
+
 该命令创建了用户 `admin2`，密码为 `admin2pw`，组织为 `org1.department1`，默认类型为 `user`，还有其他两种类型 `peer`，`app`
 
-新用户注册后，会自动为新用户生成一个密码，新用户需要使用这个密码，生成自己的凭证，就像第一个用户那样。
+新用户注册后，会自动为新用户生成一个密码，新用户需要使用这个密码，生成自己的凭证，就像第一个用户那样，注册完后 Server 中用户信息变更为：
+
+```sql
+sqlite> select * from users;
+admin|$2a$10$qmlvQvUA.o3DannbNW5jdOEqCQlW6CX8qrVzzW7HnNrpa2.plQVV6|client||[{"name":"hf.Revoker","value":"1"},{"name":"hf.IntermediateCA","value":"1"},{"name":"hf.GenCRL","value":"1"},{"name":"hf.Registrar.Attributes","value":"*"},{"name":"hf.AffiliationMgr","value":"1"},{"name":"hf.Registrar.Roles","value":"*"},{"name":"hf.Registrar.DelegateRoles","value":"*"}]|1|-1|2|0
+
+admin2|$2a$10$sGpM7R5sVANNB7JUek6ni.2AmzG7vEnMSaSnen.k9QKcOXUep1FfS|user|org1.department1|[{"name":"hf.Revoker","value":"true"},{"name":"foo","value":"bar"},{"name":"hf.EnrollmentID","value":"admin2","ecert":true},{"name":"hf.Type","value":"user","ecert":true},{"name":"hf.Affiliation","value":"org1.department1","ecert":true}]|0|-1|2|0
+
+```
 
 为新注册的用户 admin2 准备一个新目录
 
-- `export FABRIC_CA_CLIENT_HOME=/home/kong/goProject/src/github.com/hyperledger/fabric-ca/bin/clients/admin2`
+- `export FABRIC_CA_CLIENT_HOME=/home/kong/goProject/src/github.com/hyperledger/fabric-ca/bin/client/admin2`
 - `mkdir -p $FABRIC_CA_CLIENT_HOME`
 
 然后生成凭证：
@@ -97,6 +109,163 @@ admin2
     ├── signcerts
     │   └── cert.pem
     └── user
+```
+
+Server端 数据库中保存证书信息为：
+
+```sql
+sqlite> select * from certificates;
+admin|40e2d256db1fa1b3a7fd4b5ade0d78e910883d28|ac4a23981c531da592be67a90816e19e2ff752f3||good|0|2020-03-30 12:57:00+00:00|0001-01-01 00:00:00+00:00|-----BEGIN CERTIFICATE-----
+MIICPjCCAeWgAwIBAgIUQOLSVtsfobOn/Uta3g146RCIPSgwCgYIKoZIzj0EAwIw
+aDELMAkGA1UEBhMCVVMxFzAVBgNVBAgTDk5vcnRoIENhcm9saW5hMRQwEgYDVQQK
+EwtIeXBlcmxlZGdlcjEPMA0GA1UECxMGRmFicmljMRkwFwYDVQQDExBmYWJyaWMt
+Y2Etc2VydmVyMB4XDTE5MDMzMTEyNTIwMFoXDTIwMDMzMDEyNTcwMFowXTELMAkG
+A1UEBhMCVVMxFzAVBgNVBAgTDk5vcnRoIENhcm9saW5hMRQwEgYDVQQKEwtIeXBl
+cmxlZGdlcjEPMA0GA1UECxMGY2xpZW50MQ4wDAYDVQQDEwVhZG1pbjBZMBMGByqG
+SM49AgEGCCqGSM49AwEHA0IABN6TALs8NFoc2YlxCXV7L1fzjwVSfruZksacUpSS
+i15WiF6PM/nhfawN6R3sJuhDHPwAQboWrwOW3dFeqw47tIWjeDB2MA4GA1UdDwEB
+/wQEAwIHgDAMBgNVHRMBAf8EAjAAMB0GA1UdDgQWBBThEF39w1ohthkZwhjuBPLO
+JVCt3DAfBgNVHSMEGDAWgBSsSiOYHFMdpZK+Z6kIFuGeL/dS8zAWBgNVHREEDzAN
+ggtrb25nLWxlbm92bzAKBggqhkjOPQQDAgNHADBEAiB6leoON5pcfXhFvJLWwnxK
+kX+eB1Eiw7gN3I95og005QIgbskoRnU1vnDptv54t14Gtq65tSHGsqdbo8Z2ER6S
+Ex4=
+-----END CERTIFICATE-----
+|1
+admin2|6ae9fcc24621050daa9126fbe58f76933e7598ae|ac4a23981c531da592be67a90816e19e2ff752f3||good|0|2020-03-30 13:03:00+00:00|0001-01-01 00:00:00+00:00|-----BEGIN CERTIFICATE-----
+MIICyTCCAnCgAwIBAgIUaun8wkYhBQ2qkSb75Y92kz51mK4wCgYIKoZIzj0EAwIw
+aDELMAkGA1UEBhMCVVMxFzAVBgNVBAgTDk5vcnRoIENhcm9saW5hMRQwEgYDVQQK
+EwtIeXBlcmxlZGdlcjEPMA0GA1UECxMGRmFicmljMRkwFwYDVQQDExBmYWJyaWMt
+Y2Etc2VydmVyMB4XDTE5MDMzMTEyNTgwMFoXDTIwMDMzMDEzMDMwMFowfTELMAkG
+A1UEBhMCVVMxFzAVBgNVBAgTDk5vcnRoIENhcm9saW5hMRQwEgYDVQQKEwtIeXBl
+cmxlZGdlcjEuMAsGA1UECxMEdXNlcjALBgNVBAsTBG9yZzEwEgYDVQQLEwtkZXBh
+cnRtZW50MTEPMA0GA1UEAxMGYWRtaW4yMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcD
+QgAE+dUCZp/ZCv1xsymW2ZR3t2Dgco9n3CcTC/5ZvmI+9Y1Kml+6iAsls6JPSzO/
+VOw1I7HR9ztfQAoJkkOI+4kMu6OB4jCB3zAOBgNVHQ8BAf8EBAMCB4AwDAYDVR0T
+AQH/BAIwADAdBgNVHQ4EFgQU2bJ309mznDt1pygdzC283+L6QgQwHwYDVR0jBBgw
+FoAUrEojmBxTHaWSvmepCBbhni/3UvMwFgYDVR0RBA8wDYILa29uZy1sZW5vdm8w
+ZwYIKgMEBQYHCAEEW3siYXR0cnMiOnsiaGYuQWZmaWxpYXRpb24iOiJvcmcxLmRl
+cGFydG1lbnQxIiwiaGYuRW5yb2xsbWVudElEIjoiYWRtaW4yIiwiaGYuVHlwZSI6
+InVzZXIifX0wCgYIKoZIzj0EAwIDRwAwRAIgTwwT8jJDmMCHwNefGkB41y0OxN66
+sNgdBivq6gWcaL4CIAHr2Rpx9LFd9VfCDUzAEGSTNtO9qI87cTI7Kjwa7O7o
+-----END CERTIFICATE-----
+|1
+```
+
+`fabric-ca-client reenroll` 重新登记节点，在节点授权即将到期时需要重新登记节点信息，两条颁发给节点admin2的证书颁发事件不一样
+
+```sql
+sqlite> select * from certificates;
+admin|40e2d256db1fa1b3a7fd4b5ade0d78e910883d28|ac4a23981c531da592be67a90816e19e2ff752f3||good|0|2020-03-30 12:57:00+00:00|0001-01-01 00:00:00+00:00|-----BEGIN CERTIFICATE-----
+MIICPjCCAeWgAwIBAgIUQOLSVtsfobOn/Uta3g146RCIPSgwCgYIKoZIzj0EAwIw
+aDELMAkGA1UEBhMCVVMxFzAVBgNVBAgTDk5vcnRoIENhcm9saW5hMRQwEgYDVQQK
+EwtIeXBlcmxlZGdlcjEPMA0GA1UECxMGRmFicmljMRkwFwYDVQQDExBmYWJyaWMt
+Y2Etc2VydmVyMB4XDTE5MDMzMTEyNTIwMFoXDTIwMDMzMDEyNTcwMFowXTELMAkG
+A1UEBhMCVVMxFzAVBgNVBAgTDk5vcnRoIENhcm9saW5hMRQwEgYDVQQKEwtIeXBl
+cmxlZGdlcjEPMA0GA1UECxMGY2xpZW50MQ4wDAYDVQQDEwVhZG1pbjBZMBMGByqG
+SM49AgEGCCqGSM49AwEHA0IABN6TALs8NFoc2YlxCXV7L1fzjwVSfruZksacUpSS
+i15WiF6PM/nhfawN6R3sJuhDHPwAQboWrwOW3dFeqw47tIWjeDB2MA4GA1UdDwEB
+/wQEAwIHgDAMBgNVHRMBAf8EAjAAMB0GA1UdDgQWBBThEF39w1ohthkZwhjuBPLO
+JVCt3DAfBgNVHSMEGDAWgBSsSiOYHFMdpZK+Z6kIFuGeL/dS8zAWBgNVHREEDzAN
+ggtrb25nLWxlbm92bzAKBggqhkjOPQQDAgNHADBEAiB6leoON5pcfXhFvJLWwnxK
+kX+eB1Eiw7gN3I95og005QIgbskoRnU1vnDptv54t14Gtq65tSHGsqdbo8Z2ER6S
+Ex4=
+-----END CERTIFICATE-----
+|1
+admin2|6ae9fcc24621050daa9126fbe58f76933e7598ae|ac4a23981c531da592be67a90816e19e2ff752f3||good|0|2020-03-30 13:03:00+00:00|0001-01-01 00:00:00+00:00|-----BEGIN CERTIFICATE-----
+MIICyTCCAnCgAwIBAgIUaun8wkYhBQ2qkSb75Y92kz51mK4wCgYIKoZIzj0EAwIw
+aDELMAkGA1UEBhMCVVMxFzAVBgNVBAgTDk5vcnRoIENhcm9saW5hMRQwEgYDVQQK
+EwtIeXBlcmxlZGdlcjEPMA0GA1UECxMGRmFicmljMRkwFwYDVQQDExBmYWJyaWMt
+Y2Etc2VydmVyMB4XDTE5MDMzMTEyNTgwMFoXDTIwMDMzMDEzMDMwMFowfTELMAkG
+A1UEBhMCVVMxFzAVBgNVBAgTDk5vcnRoIENhcm9saW5hMRQwEgYDVQQKEwtIeXBl
+cmxlZGdlcjEuMAsGA1UECxMEdXNlcjALBgNVBAsTBG9yZzEwEgYDVQQLEwtkZXBh
+cnRtZW50MTEPMA0GA1UEAxMGYWRtaW4yMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcD
+QgAE+dUCZp/ZCv1xsymW2ZR3t2Dgco9n3CcTC/5ZvmI+9Y1Kml+6iAsls6JPSzO/
+VOw1I7HR9ztfQAoJkkOI+4kMu6OB4jCB3zAOBgNVHQ8BAf8EBAMCB4AwDAYDVR0T
+AQH/BAIwADAdBgNVHQ4EFgQU2bJ309mznDt1pygdzC283+L6QgQwHwYDVR0jBBgw
+FoAUrEojmBxTHaWSvmepCBbhni/3UvMwFgYDVR0RBA8wDYILa29uZy1sZW5vdm8w
+ZwYIKgMEBQYHCAEEW3siYXR0cnMiOnsiaGYuQWZmaWxpYXRpb24iOiJvcmcxLmRl
+cGFydG1lbnQxIiwiaGYuRW5yb2xsbWVudElEIjoiYWRtaW4yIiwiaGYuVHlwZSI6
+InVzZXIifX0wCgYIKoZIzj0EAwIDRwAwRAIgTwwT8jJDmMCHwNefGkB41y0OxN66
+sNgdBivq6gWcaL4CIAHr2Rpx9LFd9VfCDUzAEGSTNtO9qI87cTI7Kjwa7O7o
+-----END CERTIFICATE-----
+|1
+admin2|77f3c4b222672d239b944e42feab634fa2c68713|ac4a23981c531da592be67a90816e19e2ff752f3||good|0|2020-03-30 13:10:00+00:00|0001-01-01 00:00:00+00:00|-----BEGIN CERTIFICATE-----
+MIICyjCCAnCgAwIBAgIUd/PEsiJnLSOblE5C/qtjT6LGhxMwCgYIKoZIzj0EAwIw
+aDELMAkGA1UEBhMCVVMxFzAVBgNVBAgTDk5vcnRoIENhcm9saW5hMRQwEgYDVQQK
+EwtIeXBlcmxlZGdlcjEPMA0GA1UECxMGRmFicmljMRkwFwYDVQQDExBmYWJyaWMt
+Y2Etc2VydmVyMB4XDTE5MDMzMTEzMDUwMFoXDTIwMDMzMDEzMTAwMFowfTELMAkG
+A1UEBhMCVVMxFzAVBgNVBAgTDk5vcnRoIENhcm9saW5hMRQwEgYDVQQKEwtIeXBl
+cmxlZGdlcjEuMAsGA1UECxMEdXNlcjALBgNVBAsTBG9yZzEwEgYDVQQLEwtkZXBh
+cnRtZW50MTEPMA0GA1UEAxMGYWRtaW4yMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcD
+QgAEtABRJSYb+PU76JubsMRTpEfZdb28WoXPqQ+Josx4xVkADA753H+Bs+4/ZAwL
+v+Dev4x3qdIQf9BPVEFWQaej06OB4jCB3zAOBgNVHQ8BAf8EBAMCB4AwDAYDVR0T
+AQH/BAIwADAdBgNVHQ4EFgQUHWJeHAxP9I78F1CXcJqR0LWFUAAwHwYDVR0jBBgw
+FoAUrEojmBxTHaWSvmepCBbhni/3UvMwFgYDVR0RBA8wDYILa29uZy1sZW5vdm8w
+ZwYIKgMEBQYHCAEEW3siYXR0cnMiOnsiaGYuQWZmaWxpYXRpb24iOiJvcmcxLmRl
+cGFydG1lbnQxIiwiaGYuRW5yb2xsbWVudElEIjoiYWRtaW4yIiwiaGYuVHlwZSI6
+InVzZXIifX0wCgYIKoZIzj0EAwIDSAAwRQIhAOjywA33t5MKc5yT8FNBlyEvGgzD
+DGQLixQu66/TancsAiBkgKmY4E+jWlPjK9lxwi6MDLicfoq0/7se2G8Q6vw2fA==
+-----END CERTIFICATE-----
+|1
+
+```
+
+`fabric-ca-client revoke -e admin2` 注销刚刚登记的admin2节点，证书状态变为 `revoked`
+
+```sql
+sqlite> select * from certificates;
+admin|40e2d256db1fa1b3a7fd4b5ade0d78e910883d28|ac4a23981c531da592be67a90816e19e2ff752f3||good|0|2020-03-30 12:57:00+00:00|0001-01-01 00:00:00+00:00|-----BEGIN CERTIFICATE-----
+MIICPjCCAeWgAwIBAgIUQOLSVtsfobOn/Uta3g146RCIPSgwCgYIKoZIzj0EAwIw
+aDELMAkGA1UEBhMCVVMxFzAVBgNVBAgTDk5vcnRoIENhcm9saW5hMRQwEgYDVQQK
+EwtIeXBlcmxlZGdlcjEPMA0GA1UECxMGRmFicmljMRkwFwYDVQQDExBmYWJyaWMt
+Y2Etc2VydmVyMB4XDTE5MDMzMTEyNTIwMFoXDTIwMDMzMDEyNTcwMFowXTELMAkG
+A1UEBhMCVVMxFzAVBgNVBAgTDk5vcnRoIENhcm9saW5hMRQwEgYDVQQKEwtIeXBl
+cmxlZGdlcjEPMA0GA1UECxMGY2xpZW50MQ4wDAYDVQQDEwVhZG1pbjBZMBMGByqG
+SM49AgEGCCqGSM49AwEHA0IABN6TALs8NFoc2YlxCXV7L1fzjwVSfruZksacUpSS
+i15WiF6PM/nhfawN6R3sJuhDHPwAQboWrwOW3dFeqw47tIWjeDB2MA4GA1UdDwEB
+/wQEAwIHgDAMBgNVHRMBAf8EAjAAMB0GA1UdDgQWBBThEF39w1ohthkZwhjuBPLO
+JVCt3DAfBgNVHSMEGDAWgBSsSiOYHFMdpZK+Z6kIFuGeL/dS8zAWBgNVHREEDzAN
+ggtrb25nLWxlbm92bzAKBggqhkjOPQQDAgNHADBEAiB6leoON5pcfXhFvJLWwnxK
+kX+eB1Eiw7gN3I95og005QIgbskoRnU1vnDptv54t14Gtq65tSHGsqdbo8Z2ER6S
+Ex4=
+-----END CERTIFICATE-----
+|1
+admin2|6ae9fcc24621050daa9126fbe58f76933e7598ae|ac4a23981c531da592be67a90816e19e2ff752f3||revoked|0|2020-03-30 13:03:00+00:00|2019-03-31 13:14:32|-----BEGIN CERTIFICATE-----
+MIICyTCCAnCgAwIBAgIUaun8wkYhBQ2qkSb75Y92kz51mK4wCgYIKoZIzj0EAwIw
+aDELMAkGA1UEBhMCVVMxFzAVBgNVBAgTDk5vcnRoIENhcm9saW5hMRQwEgYDVQQK
+EwtIeXBlcmxlZGdlcjEPMA0GA1UECxMGRmFicmljMRkwFwYDVQQDExBmYWJyaWMt
+Y2Etc2VydmVyMB4XDTE5MDMzMTEyNTgwMFoXDTIwMDMzMDEzMDMwMFowfTELMAkG
+A1UEBhMCVVMxFzAVBgNVBAgTDk5vcnRoIENhcm9saW5hMRQwEgYDVQQKEwtIeXBl
+cmxlZGdlcjEuMAsGA1UECxMEdXNlcjALBgNVBAsTBG9yZzEwEgYDVQQLEwtkZXBh
+cnRtZW50MTEPMA0GA1UEAxMGYWRtaW4yMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcD
+QgAE+dUCZp/ZCv1xsymW2ZR3t2Dgco9n3CcTC/5ZvmI+9Y1Kml+6iAsls6JPSzO/
+VOw1I7HR9ztfQAoJkkOI+4kMu6OB4jCB3zAOBgNVHQ8BAf8EBAMCB4AwDAYDVR0T
+AQH/BAIwADAdBgNVHQ4EFgQU2bJ309mznDt1pygdzC283+L6QgQwHwYDVR0jBBgw
+FoAUrEojmBxTHaWSvmepCBbhni/3UvMwFgYDVR0RBA8wDYILa29uZy1sZW5vdm8w
+ZwYIKgMEBQYHCAEEW3siYXR0cnMiOnsiaGYuQWZmaWxpYXRpb24iOiJvcmcxLmRl
+cGFydG1lbnQxIiwiaGYuRW5yb2xsbWVudElEIjoiYWRtaW4yIiwiaGYuVHlwZSI6
+InVzZXIifX0wCgYIKoZIzj0EAwIDRwAwRAIgTwwT8jJDmMCHwNefGkB41y0OxN66
+sNgdBivq6gWcaL4CIAHr2Rpx9LFd9VfCDUzAEGSTNtO9qI87cTI7Kjwa7O7o
+-----END CERTIFICATE-----
+|1
+admin2|77f3c4b222672d239b944e42feab634fa2c68713|ac4a23981c531da592be67a90816e19e2ff752f3||revoked|0|2020-03-30 13:10:00+00:00|2019-03-31 13:14:32|-----BEGIN CERTIFICATE-----
+MIICyjCCAnCgAwIBAgIUd/PEsiJnLSOblE5C/qtjT6LGhxMwCgYIKoZIzj0EAwIw
+aDELMAkGA1UEBhMCVVMxFzAVBgNVBAgTDk5vcnRoIENhcm9saW5hMRQwEgYDVQQK
+EwtIeXBlcmxlZGdlcjEPMA0GA1UECxMGRmFicmljMRkwFwYDVQQDExBmYWJyaWMt
+Y2Etc2VydmVyMB4XDTE5MDMzMTEzMDUwMFoXDTIwMDMzMDEzMTAwMFowfTELMAkG
+A1UEBhMCVVMxFzAVBgNVBAgTDk5vcnRoIENhcm9saW5hMRQwEgYDVQQKEwtIeXBl
+cmxlZGdlcjEuMAsGA1UECxMEdXNlcjALBgNVBAsTBG9yZzEwEgYDVQQLEwtkZXBh
+cnRtZW50MTEPMA0GA1UEAxMGYWRtaW4yMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcD
+QgAEtABRJSYb+PU76JubsMRTpEfZdb28WoXPqQ+Josx4xVkADA753H+Bs+4/ZAwL
+v+Dev4x3qdIQf9BPVEFWQaej06OB4jCB3zAOBgNVHQ8BAf8EBAMCB4AwDAYDVR0T
+AQH/BAIwADAdBgNVHQ4EFgQUHWJeHAxP9I78F1CXcJqR0LWFUAAwHwYDVR0jBBgw
+FoAUrEojmBxTHaWSvmepCBbhni/3UvMwFgYDVR0RBA8wDYILa29uZy1sZW5vdm8w
+ZwYIKgMEBQYHCAEEW3siYXR0cnMiOnsiaGYuQWZmaWxpYXRpb24iOiJvcmcxLmRl
+cGFydG1lbnQxIiwiaGYuRW5yb2xsbWVudElEIjoiYWRtaW4yIiwiaGYuVHlwZSI6
+InVzZXIifX0wCgYIKoZIzj0EAwIDSAAwRQIhAOjywA33t5MKc5yT8FNBlyEvGgzD
+DGQLixQu66/TancsAiBkgKmY4E+jWlPjK9lxwi6MDLicfoq0/7se2G8Q6vw2fA==
+-----END CERTIFICATE-----
+|1
 ```
 
 ### 查看用户详情

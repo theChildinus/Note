@@ -20,5 +20,3 @@
 ## :meat_on_bone: [琐碎的知识点](/knowledge.md)
 
 ## :coffee: [Java相关](/LearnJAVA.md)
-
-[](54876d48acf4d5fdff077c45d7c1fefac11317ca)
