@@ -1,5 +1,7 @@
 # README 读书笔记
 
+## :meat_on_bone: [基础知识](/knowledge.md)
+
 ## :ox: C++ 相关
 
 - [C++ Primer](/LearnC++.h)
@@ -7,16 +9,16 @@
 
 ## :shaved_ice: [编程珠玑](/编程珠玑.md)
 
+## :black_nib: [LeetCode](/LeetCode.md)
+
 ## :elephant: 大数据
 
 - [Hadoop权威指南](/Hadoop权威指南.md)
 - [SparkStreaming源码](/SparkStreaming.md)
 - [kafka](/kafka.md)
 
-## :penguin: [折腾Linux](/fixLinux.md)
-
-## :black_nib: [LeetCode](/LeetCode.md)
-
-## :meat_on_bone: [琐碎的知识点](/knowledge.md)
-
 ## :coffee: [Java相关](/LearnJAVA.md)
+
+## :badger: [Go相关](/LearnGo.md)
+
+## :penguin: [折腾Linux](/fixLinux.md)
