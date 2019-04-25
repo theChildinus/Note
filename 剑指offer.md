@@ -102,20 +102,22 @@ Stack<Integer> stack1 = new Stack<Integer>();
 Stack<Integer> stack2 = new Stack<Integer>();
 
 public void push(int node) {
+    //入对的时候将数据元素压入栈S1中
     stack1.push(node);
 }
 
-// 弹出元素时 如果stack2不为空，不必再压到stack1中
-// 因为就算此时有新元素到达 出队的元素仍然是stack2栈顶的元素
 public int pop() {
-    if (stack2.isEmpty()) {
-        while (!stack1.isEmpty()) {
-            stack2.push(stack1.pop());
-        }
+    //如果S1不为空，将S1出栈的元素一次入栈到S2中
+    while(!stack1.isEmpty()){
+        stack2.push(stack1.pop());
     }
-
-    int ret = stack2.pop();
-    return ret;
+    //将S2的栈顶元素出栈，即出队。
+    int first=stack2.pop();
+    //如果S2不为空，将S2中的元素出栈，然后入栈到S1中
+    while(!stack2.isEmpty()){
+        stack1.push(stack2.pop());
+    }
+    return first;
 }
 ```
 
@@ -1196,10 +1198,77 @@ public boolean isContinuous(int [] numbers) {
 }
 ```
 
-### Q： 求 1 + 2 +3 + ... + n
-
-利用构造函数求解
+### Q： 不用加减乘除做加法
 
 ```java
+int Add(int num1, int num2)
+{
+    int sum, carry;
+    do
+    {
+        sum = num1 ^ num2; //加的结果
+        carry = (num1 & num2) << 1; // 进位
 
+        num1 = sum;
+        num2 = carry;
+    } while (num2 != 0);
+
+    return num1;
+}
+```
+
+### Q：字符串转整数
+
+```java
+public int StrToInt(String str) {
+    if (str.length() == 0) {
+        return 0;
+    }
+
+    long result = 0;
+    int sign = 1;
+    int carry = 1;
+    for (char c : str.toCharArray()) {
+        if (c == '-') {
+            sign = -1;
+        } else if (c == '+') {
+            sign = 1;
+        } else if (c < '0' || c > '9') {
+            result = 0;
+            break;
+        } else {
+            result *= 10;
+            result += c - '0';
+        }
+    }
+    return result * sign;
+}
+```
+
+### Q：数组中重复数字
+
+```java
+public boolean duplicate(int numbers[],int length,int [] duplication) {
+    if (numbers == null || length <= 0) {
+        return false;
+    }
+    for (int i = 0; i < length; i++) {
+        if (numbers[i] < 0 || numbers[i] > length - 1) {
+            return false;
+        }
+    }
+
+    for (int i = 0; i < length; i++) {
+        while (numbers[i] != i) {
+            if (numbers[i] == numbers[numbers[i]]) {
+                duplication[0] = numbers[i];
+                return true;
+            }
+            int tmp = numbers[i];
+            numbers[i] = numbers[tmp];
+            numbers[tmp] = tmp;
+        }
+    }
+    return false;
+}
 ```
