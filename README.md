@@ -7,9 +7,10 @@
 - [C++ Primer](/LearnC++.h)
 - [C++ 知识点](/backToC.md)
 
-## :shaved_ice: [编程珠玑](/编程珠玑.md)
+## :black_nib: 算法
 
-## :black_nib: [LeetCode](/LeetCode.md)
+- [编程珠玑](/编程珠玑.md)
+- [LeetCode](/LeetCode.md)
 
 ## :elephant: 大数据
 
@@ -19,6 +20,6 @@
 
 ## :coffee: [Java相关](/LearnJAVA.md)
 
-## :badger: [Go相关](/LearnGo.md)
+## :ocean: [Go相关](/LearnGo.md)
 
 ## :penguin: [折腾Linux](/fixLinux.md)
