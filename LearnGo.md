@@ -1,3 +1,24 @@
+<!-- TOC -->
+
+- [学习Go](#学习go)
+    - [配置](#配置)
+        - [安装 Go](#安装-go)
+        - [vscode + Go 开发环境](#vscode--go-开发环境)
+    - [基本语法](#基本语法)
+        - [变量、常量](#变量常量)
+        - [选择、循环语句](#选择循环语句)
+        - [函数、指针](#函数指针)
+        - [数组、容器](#数组容器)
+        - [面向“对象”](#面向对象)
+    - [接口](#接口)
+    - [函数式编程、并发编程](#函数式编程并发编程)
+    - [ipc & net/http](#ipc--nethttp)
+    - [REST](#rest)
+        - [什么是REST](#什么是rest)
+    - [RPC](#rpc)
+
+<!-- /TOC -->
+
 # 学习Go
 
 ## 配置
@@ -65,7 +86,7 @@ go install golang.org/x/lint/golint
 
 [golang注意事项](https://blog.csdn.net/smile_yangyue/article/details/81076993)
 
-### 变量，常量
+### 变量、常量
 
 变量关键字 `var`
 
@@ -221,7 +242,9 @@ func sum(numbers ...int) int {
 
 go指针不能运算，go语言只有值传递
 
-### 数组，容器
+### 数组、容器
+
+#### 数组
 
 数组的定义：
 
@@ -265,7 +288,9 @@ func main() {
 [200 2 3 4 5]
 ```
 
-基于数组，**切片(slice)**添加了一系列管理功能，可以随时动态扩充存放空间，并且可以被随意传递而不会导致所管理的元素被复制，**slice本身没有数据，是对底层array的一个view**
+#### slice切片
+
+基于数组，切片添加了一系列管理功能，可以随时动态扩充存放空间，并且可以被随意传递而不会导致所管理的元素被复制，**slice本身没有数据，是对底层array的一个view**
 
 切片的数据结构可以抽象为以下三个变量：
 
@@ -326,7 +351,9 @@ slice可以向后扩展，不可以向前扩展，`s[i]` 不可以超越 `len(s)
 `append`：添加元素时如果超越cap，系统会重新分配更大的底层数组，由于值传递的缘故，必须接收 `append` 的返回值，因为扩容可能导致cap和ptr改变，基本用法如下：
 
 ```txt
-Append returns the updated slice. It is therefore necessary to store the result of append, often in the variable holding the slice itself:
+Append returns the updated slice.
+It is therefore necessary to store the result of append,
+often in the variable holding the slice itself:
     slice = append(slice, elem1, elem2)
     slice = append(slice, anotherSlice...)
 ```
@@ -345,6 +372,79 @@ s6 := append(s5[:2], s5[3:]...)
 fmt.Println(s6) // [5 6 11 12]
 ```
 
+#### map
+
+map的基本使用
+
+```go
+m1 := map[string]string{
+    "name":    "ccmouse",
+    "course":  "golang",
+    "site":    "imooc",
+    "quality": "good",
+}
+
+m2 = make(map[string]string) // m2 = empty map
+
+var m3 map[string]string // m3 == nil
+
+for k, v := range m1 {
+    fmt.Println(k, v)
+}
+
+if courseName, ok := m1["course"]; ok {
+    fmt.Println(courseName, ok)
+} else {
+    fmt.Println("key does not exist")
+}
+
+delete(m1, "name")
+```
+
+map实现使用哈希表，取map中不存在的key的值，返回value的初始零值，map的key除了 `slice`，`map`，`function` 的内建类型都可以作为key，`struct` 类型不包含上述字段（编译器检查）也可以作为key
+
+#### rune
+
+```go
+s := "abc我是谁!" // UTF-8编码
+fmt.Println(s)
+
+for _, b := range []byte(s) {
+    fmt.Printf("%x ", b)
+}
+fmt.Println()
+
+for i, ch := range s { // ch is a rune(int32)
+    fmt.Printf("(%d %x) ", i, ch)
+}
+fmt.Println()
+
+// abc我是谁!
+// 61 62 63 e6 88 91 e6 98 af e8 b0 81 21 --- utf-8
+// (0 61) (1 62) (2 63) (3 6211) (6 662f) (9 8c01) (12 21) --- unicode
+
+fmt.Println("Rune count:", utf8.RuneCountInString(s))
+
+bytes := []byte(s)
+for len(bytes) > 0 {
+    ch, size := utf8.DecodeRune(bytes) // ch is a rune
+    bytes = bytes[size:]
+    fmt.Printf("%c ", ch)
+}
+fmt.Println()
+
+// Rune count: 7
+// a b c 我 是 谁 !
+
+for i, ch := range []rune(s) {
+    fmt.Printf("(%d %c) ", i, ch)
+}
+fmt.Println()
+// (0 a) (1 b) (2 c) (3 我) (4 是) (5 谁) (6 !) --- unicode
+```
+
+其他对字符串操作的函数在 `strings` 中
+
 关键字`range`，类似迭代器，可以遍历数组，字符串，map等
 
 - range作用于 `string`，第一个返回值是index，第二个是char
@@ -357,19 +457,132 @@ fmt.Println(s6) // [5 6 11 12]
 - `range` 会复制对象，而不是直接在原对象上操作
 - 使用 `range` 迭代遍历引用类型时，底层数据不会被复制
 
-### 面向接口
+### 面向“对象”
 
-- 结构体
-- duck typing的概念
-- 组合的思想
+#### 结构体
 
-### 函数式编程、并发编程
+go语言仅支持封装，不支持继承和多态，无构造函数，如需要控制结构体的构造，可是用工厂函数实现，**返回的是局部变量的地址**
+
+结构实例的创建在堆上还是栈上是由编译器和运行环境决定的
+
+```go
+type treeNode struct {
+    value       int
+    left, right *treeNode
+}
+
+func createTreeNode(value int) *treeNode {
+    return &treeNode{value: value}
+}
+
+func main() {
+    var root treeNode
+    root = treeNode{value: 3}
+    root.left = &treeNode{}
+    root.right = &treeNode{5, nil, nil}
+    root.right.left = new(treeNode)
+    root.left.right = createTreeNode(2)
+
+    node := []treeNode{
+        {value: 3},
+        {},
+        {6, nil, &root},
+    }
+    fmt.Println(node)
+}
+```
+
+为结构定义方法需要显示定义和命名方法的接收者，函数名之前为接收者，接收者是值传递，所以只有使用指针才可以改变结构内容
+
+- 要改变内容必须使用指针接收者
+- 结构过大也考虑使用指针接收者
+- 一致性：如有指针接收者，最好都是指针接收者
+- 值接受者是go独有的
+- 值/指针接收者均可接收值/指针
+
+nil指针也可以调用方法
+
+```go
+func (node treeNode) print() {
+    fmt.Print(node.value)
+}
+
+func (node *treeNode) setValue(value int) {
+    node.value = value
+}
+
+func (node *treeNode) traverse() {
+    if node == nil {
+        return
+    }
+    node.left.traverse()
+    node.print()
+    node.right.traverse()
+}
+```
+
+#### 封装
+
+- 名字一般使用CamelCase
+- 首字母大写代表public，首字母小写代表private，public和private 是针对包而言的
+- **每个目录一个包**，目录名和包名可以不相同
+- 为结构定义的方法必须放在同一个包内，但是可以在不同的文件相同的包内
+
+如何扩充系统类型或者别人的类型：
+
+- 定义别名 `type Queue []int`
+- 使用组合 `type myNode struct { node *tree.Node }`
+
+## 接口
+
+`duck typing` 的概念
+
+>"当看到一只鸟走起来像鸭子、游泳起来像鸭子、叫起来也像鸭子，那么这只鸟就可以被称为鸭子。"
+
+在面向对象的编程语言中，当某个地方（比如某个函数的参数）需要符合某个条件的变量（比如要求这个变量实现了某种方法）时，什么是判断这个变量是否“符合条件”的标准？
+
+python中的 duck typing，**运行时**才知道传入的 retriever 有没有 get，需要注释来说明接口
+
+```python
+def download(retriever):
+    return retriever.get("www.baidu.com")
+```
+
+c++中的 duck typing，**编译时**才知道传入的 retriever 有没有 get，需要注释来说明接口
+
+```cpp
+template<class R>
+string download(const R& retriever) {
+    return retriever.get("www.baidu.com");
+}
+```
+
+java中类似的写法，Retriever是一个接口，所以实现者必须要实现Retriever接口，解决了运行时、编译时发现错误，但不是 duck typing，因为必须实现 Retriever 接口，
+
+```java
+<R extends Retriever>
+String download(R r) {
+    return r.get("www.baidu.com");
+}
+```
+
+go中的 dyck typing 采取了折中的办法：
+
+- 静态类型系统
+- 一个类型不需要显式地声明它实现了某个接口
+- 仅当某个变量的类型实现了某个接口的方法，这个变量才能用在要求这个接口的地方。
+
+go中**接口由使用者定义**，接口的实现是隐式的
+
+## 函数式编程、并发编程
 
 - 闭包的概念
 - goroutine和channel
 - 调度器
 
-## [ipc & net/http](https://github.com/theChildinus/learngo)
+## ipc & net/http
+
+[net/http](https://github.com/theChildinus/learngo)
 
 ## REST
 
