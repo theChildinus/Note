@@ -11,6 +11,7 @@
         - [数组、容器](#数组容器)
         - [面向“对象”](#面向对象)
     - [接口](#接口)
+        - [接口的组合](#接口的组合)
     - [函数式编程、并发编程](#函数式编程并发编程)
     - [ipc & net/http](#ipc--nethttp)
     - [REST](#rest)
@@ -570,9 +571,115 @@ go中的 dyck typing 采取了折中的办法：
 
 - 静态类型系统
 - 一个类型不需要显式地声明它实现了某个接口
-- 仅当某个变量的类型实现了某个接口的方法，这个变量才能用在要求这个接口的地方。
+- 仅当某个变量的类型实现了某个接口的方法，这个变量才能用在要求这个接口的地方
 
-go中**接口由使用者定义**，接口的实现是隐式的
+go中**接口由使用者定义**，接口的实现是隐式的，接口变量中有：实现者的类型 和 实现者的值/指针，并且
+
+- 接口变量自带指针
+- 接口变量同样采用值传递，几乎不需要使用接口的指针
+- 只能以指针方式使用指针接收者的实现，值接收者都可以
+
+```go
+
+// package main
+type Retriever interface {
+    Get(url string) string
+}
+
+func download(r Retriever) string {
+    return r.Get("www.baidu.com")
+}
+
+func main() {
+    var r Retriever
+    r = mock.Retriever{"mock"}
+    fmt.Println("%T, %v\n", r, r)   // mock.Retriever {mock}
+
+    r = &real.Retriever{UserAgent:"real"}
+    fmt.Println("%T, %v\n", r, r)   // *real.Retriever &{real}
+}
+
+// package mock
+type Retriever struct {
+    Contents string
+}
+
+func (r Retriever) Get(url string) string {
+    return r.Contents
+}
+
+// package real
+type Retriever struct {
+    UserAgent string
+}
+
+func (r *Retriever) Get(url string) string {
+    return r.UserAgent
+}
+```
+
+### 接口的组合
+
+接口组合由使用者组合
+
+```go
+// package main
+
+const baiduURL = "www.baidu.com"
+// 接口1
+type Retriever interface {
+    Get(url string) string
+}
+
+// 接口2
+type Poster interface {
+    Post(url string, form map[string]string) string
+}
+
+func download(r Retriever) string {
+    return r.Get(baiduURL)
+}
+
+func post(p Poster) {
+    p.Post(baiduURL, map[string]string{
+        "name":   "zhao",
+        "school": "bupt",
+    })
+}
+
+// 组合接口
+type RetrieverPoster interface {
+    Retriever
+    Poster
+}
+
+func session(rp RetrieverPoster) string {
+    rp.Post(baiduURL, map[string]string{
+        "contents": "hhhhhhhh",
+    })
+    return rp.Get(baiduURL)
+}
+
+func main() {
+    rp := mock.RetrieverPosterImpl{"helloworld"}
+    fmt.Println(session(&rp)) // hhhhhhhh
+}
+
+// package mock
+type RetrieverPosterImpl struct {
+    Contents string
+}
+// 对接口1方法的实现，注意要使用指针接收者，这样对数据的修改才能影响到方法外部
+func (rp *RetrieverPosterImpl) Post(url string, form map[string]string) string {
+    rp.Contents = form["contents"]
+    return "ok"
+}
+
+// 对接口2方法的实现
+func (rp *RetrieverPosterImpl) Get(url string) string {
+    return rp.Contents
+}
+```
 
 ## 函数式编程、并发编程
 
