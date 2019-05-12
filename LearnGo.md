@@ -9,10 +9,11 @@
         - [选择、循环语句](#选择循环语句)
         - [函数、指针](#函数指针)
         - [数组、容器](#数组容器)
-        - [面向“对象”](#面向对象)
-    - [接口](#接口)
-        - [接口的组合](#接口的组合)
-    - [函数式编程、并发编程](#函数式编程并发编程)
+        - [面向对象](#面向对象)
+        - [接口](#接口)
+    - [函数式编程](#函数式编程)
+    - [资源管理和错误处理](#资源管理和错误处理)
+    - [并发编程](#并发编程)
     - [ipc & net/http](#ipc--nethttp)
     - [REST](#rest)
         - [什么是REST](#什么是rest)
@@ -458,7 +459,7 @@ fmt.Println()
 - `range` 会复制对象，而不是直接在原对象上操作
 - 使用 `range` 迭代遍历引用类型时，底层数据不会被复制
 
-### 面向“对象”
+### 面向对象
 
 #### 结构体
 
@@ -534,7 +535,7 @@ func (node *treeNode) traverse() {
 - 定义别名 `type Queue []int`
 - 使用组合 `type myNode struct { node *tree.Node }`
 
-## 接口
+### 接口
 
 `duck typing` 的概念
 
@@ -618,7 +619,7 @@ func (r *Retriever) Get(url string) string {
 }
 ```
 
-### 接口的组合
+#### 接口的组合
 
 接口组合由使用者组合
 
@@ -681,9 +682,235 @@ func (rp *RetrieverPosterImpl) Get(url string) string {
 }
 ```
 
-## 函数式编程、并发编程
+## 函数式编程
 
-- 闭包的概念
+函数式编程：函数是一等公民，参数、变量、返回值都可以是函数
+
+1. 匿名函数
+
+匿名函数就是由一个不带函数名的函数声明和函数体组成
+
+```go
+func(a, b int, z float64) bool {
+    return a*b < int(z)
+}
+```
+
+匿名函数可以直接赋值给一个变量或者直接执行
+
+```go
+f := func(x, y int) int {
+    return x + y
+}
+
+func (ch chan int) {
+    ch <- ACK
+} (reply_chan) // 花括号后直接跟参数列表表示函数调用
+```
+
+2. 闭包
+
+go语言的匿名函数是一个闭包，闭包就是能够**读取**其他函数内部变量的函数。
+
+**闭包的概念**：是可以包含自由（未绑定到特定对象）变量的代码块，这些变量不在这个代码块内或者任何全局上下文中定义，而是在定义代码块的环境中定义。要执行的代码块（由于自由变量包含在代码块中，所以这些自由变量以及它们引用的对象没有被释放）为自由变量提供绑定的计算环境（作用域）。
+
+**闭包的价值**：闭包的价值在于可以作为函数对象或者匿名函数，对于类型系统而言，这意味着不仅要表示数据还要表示代码。支持闭包的多数语言都将函数作为第一级对象，就是说这些函数可以存储到变量中作为参数传递给其他函数，最重要的是能够被函数动态创建和返回。
+
+Go语言中的闭包同样也会引用到函数外的变量。闭包的实现确保只要闭包还被使用，那么被闭包引用的变量会一直存在。
+
+```go
+var j int = 5
+a := func() func() {
+    var i int = 10
+    return func() {
+        fmt.Printf("i, j: %d, %d\n", i, j)
+    }
+}()
+
+a()
+j *= 2
+a()
+
+// i, j: 10, 5
+// i, j: 10, 10
+```
+
+## 资源管理和错误处理
+
+关键字 `defer`
+
+一个函数中可以存在多个defer语句，它们遵循先进后出的原则，即最后一个defer语句最先被执行
+
+```go
+func CopyFile(dst, src string) (w int64, err error) {
+    srcFile, err := os.Open(src)
+    if err != nil {
+        return
+    }
+    defer srcFile.Close()
+
+    dstFile, err := os.Create(dstName)
+    if err != nil {
+        return
+    }
+    defer dstFile.Close()
+
+    return io.Copy(dstFile, srcFile)
+}
+
+// defer 后 也可以用 匿名函数
+
+defer func() {
+    ...
+}()
+```
+
+`error` 在go中的定义：
+
+```go
+type error interface {
+    Error() string
+}
+```
+
+我们在做错误处理时，例如在 `file.go` 中：
+
+```go
+// If there is an error, it will be of type *PathError.
+func OpenFile(name string, flag int, perm FileMode) (*File, error) {
+    testlog.Open(name)
+    return openFileNolog(name, flag, perm)
+}
+```
+
+可以这样做，具体到处理某一种错误：
+
+```go
+file, err := os.OpenFile(filename, os.O_EXCL|os.O_CREATE, 0666)
+if err != nil {
+    if pathError, ok := err.(*os.PathError); !ok {
+        panic(err)
+    } else {
+        fmt.Printf("%s, %s, %s\n", pathError.Op, pathError.Path, pathError.Err)
+    }
+}
+defer file.Close()
+```
+
+但是错误情况很多的时候，会导致代码冗余，我们这时就需要做统一的错误处理：
+
+```go
+// package main
+type appHandler func(w http.ResponseWriter, r *http.Request) error
+
+// 包装Handle方法，统一处理错误
+func errWrapper(handler appHandler) func(http.ResponseWriter, *http.Request) {
+    return func(w http.ResponseWriter, r *http.Request) {
+        defer func() {
+            if r := recover(); r != nil {
+                log.Printf("Panic %v", r)
+                http.Error(w,
+                    http.StatusText(http.StatusInternalServerError),
+                    http.StatusInternalServerError)
+            }
+        }()
+        err := handler(w, r)
+        if err != nil {
+            log.Printf("Error handling request %s", err.Error())
+            // 返回用户自定义的错误信息
+            if userError, ok := err.(userError); ok {
+                http.Error(w, userError.Message(), http.StatusBadRequest)
+                return
+            }
+
+            // 返回系统的错误信息
+            code := http.StatusOK
+            switch {
+            case os.IsNotExist(err):
+                code = http.StatusNotFound
+            case os.IsPermission(err):
+                code = http.StatusForbidden
+            default:
+                code = http.StatusInternalServerError
+            }
+            http.Error(w, http.StatusText(code), code)
+        }
+    }
+}
+
+// 定义用户错误接口
+type userError interface {
+    error
+    Message() string
+}
+
+func main() {
+    http.HandleFunc("/list/", errWrapper(HandleFileList))
+    http.ListenAndServe(":8888", nil)
+}
+
+
+// package handler
+// Handle方法，异常时只需要返回err即可
+type userError string
+
+// 实现接口定义的方法
+func (e userError) Error() string {
+    return e.Message()
+}
+
+func (e userError) Message() string {
+    return string(e)
+}
+
+func HandleFileList(w http.ResponseWriter, r *http.Request) error {
+    if strings.Index(r.URL.Path, prefix) != 0 {
+        return userError("Path Math start with " + prefix)
+    }
+    path := r.URL.Path[len(prefix):]
+    file, err := os.Open(path)
+    if err != nil {
+        return err
+    }
+    defer file.Close()
+
+    all, err := ioutil.ReadAll(file)
+    if err != nil {
+        return err
+    }
+    w.Write(all)
+    return nil
+}
+```
+
+关键字 `panic`
+
+- 停止当前函数的执行
+- 一直向上返回，执行每一层的defer
+- 如果没有遇见 `recover`，程序退出
+
+关键字 `recover`
+
+- 仅在defer调用中使用
+- 获取panic的值
+- 如果无法处理，可重新panic
+
+```go
+func tryRecover() {
+    defer func() {
+        r := recover()
+        if err, ok := r.(error); ok {
+            fmt.Println("Error occurred: ", err)
+        } else {
+            panic(r)
+        }
+    }
+    panic(errors.New("this is an error"))
+}
+```
+
+## 并发编程
+
 - goroutine和channel
 - 调度器
 
