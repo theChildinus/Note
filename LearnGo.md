@@ -3,7 +3,7 @@
 - [学习Go](#学习go)
     - [配置](#配置)
         - [安装 Go](#安装-go)
-        - [vscode + Go 开发环境](#vscode--go-开发环境)
+        - [Go开发环境](#go开发环境)
     - [基本语法](#基本语法)
         - [变量、常量](#变量常量)
         - [选择、循环语句](#选择循环语句)
@@ -14,6 +14,11 @@
     - [函数式编程](#函数式编程)
     - [资源管理和错误处理](#资源管理和错误处理)
     - [并发编程](#并发编程)
+        - [协程 Coroutine](#协程-coroutine)
+        - [goroutine](#goroutine)
+        - [channel](#channel)
+        - [select](#select)
+        - [同步机制](#同步机制)
     - [ipc & net/http](#ipc--nethttp)
     - [REST](#rest)
         - [什么是REST](#什么是rest)
@@ -45,7 +50,20 @@ go version
 go env
 ```
 
-### vscode + Go 开发环境
+### Go开发环境
+
+#### IDEA
+
+`IDEA plugin` 安装GO插件
+
+安装 go 包管理工具：`go get -v github.com/gpmgo/gopm`
+
+IDEA 安装 `goimports` 插件
+
+- `gopm get -g -v -u golang.org/x/tools/cmd/goimports`
+- `go install golang.org/x/tools/cmd/goimports`
+
+#### vscode
 
 在vscode中安装插件Go 由于网络问题会报错：
 
@@ -911,8 +929,360 @@ func tryRecover() {
 
 ## 并发编程
 
-- goroutine和channel
-- 调度器
+### 协程 Coroutine
+
+- 轻量级线程，用于并发执行任务，在特定的时间只有一个任务在运行，即并非真正地并行
+- **是非抢占式多任务处理**，由协程主动交出控制权
+- 每个协程都有自己的堆栈和局部变量，每个协程都包含3种运行状态：挂起，运行和停止
+- 多个协程可以在一个或多个线程上运行
+- **子程序是协程的一个特例**
+
+![协程](https://raw.githubusercontent.com/theChildinus/Note/master/image/20190514220002.png)
+
+非抢占式处理：
+
+```go
+for i := 0; i < 10; i++ {
+    go func(ii int) {
+        for {
+            // IO操作，会引起上下文切换，导致协程交出控制权，所以程序正常输出
+            fmt.Printf("hello from goroutine %d\n", ii)
+        }
+    }(i)
+}
+time.Sleep(time.Millisecond)
+
+var a [10]int
+for i := 0; i < 10; i++ {
+    go func(ii int) {
+        for {
+            // 协程不会交出控制权，程序进入死循环
+            a[ii]++
+            // runtime.Gosched() 手动交出控制权
+        }
+    }(i)
+}
+time.Sleep(time.Millisecond)
+fmt.Println(a)
+```
+
+以下代码会报错：`panic: runtime error: index out of range`，不把 `i` 传入匿名函数中，匿名函数 `i` 为外部的，当 `i` 增长到10，协程中访问数组会导致越界
+
+```go
+var a [10]int
+for i := 0; i < 10; i++ {
+    go func() {
+        for {
+            a[i]++
+        }
+    }()
+}
+time.Sleep(time.Millisecond)
+fmt.Println(a)
+```
+
+通过命令 `go run -race main.go` 查看数据冲突
+
+```txt
+==================
+WARNING: DATA RACE
+Read at 0x00c420090400 by goroutine 6:     // goroutine 6这时在读数据 i
+  main.main.func1()
+      /home/kong/goProject/src/myclient/main.go:111 +0x4f
+
+Previous write at 0x00c420090400 by main goroutine: // main goroutine这时在写数据 i
+  main.main()
+      /home/kong/goProject/src/myclient/main.go:108 +0x11b
+
+Goroutine 6 (running) created at:
+  main.main()
+      /home/kong/goProject/src/myclient/main.go:109 +0xf1
+==================
+panic: runtime error: index out of range
+
+goroutine 20 [running]:
+main.main.func1(0xc4200d2050, 0xc420090400)
+        /home/kong/goProject/src/myclient/main.go:111 +0xcc
+created by main.main
+        /home/kong/goProject/src/myclient/main.go:109 +0xf2
+exit status 2
+```
+
+### goroutine
+
+- 任何函数只需加上go就能送给调度器运行
+- 不需要在定义时区分是否是异步函数
+- 调度器在合适的点进行切换，**可能**切换的点
+  - I/O，select，clannel，等待锁
+  - 函数调用（有时），runtime.Gosched()
+- 使用 `-race` 检测数据冲突
+
+### channel
+
+channel 存在与协程与协程之间
+
+在下面代码中，如果不添加 `time.Sleep(time.Millisecond)` 这条语句，当 `c <- 2` 写入channel时，匿名函数所对应的协程还没来得及输出，chanDemo协程就已经退出了，所以 `2` 不打印
+
+```go
+func chanDemo() {
+    c := make(chan int)
+    go func() {
+        for {
+            n := <-c
+            fmt.Println(n)
+        }
+    }()
+    c <- 1
+    c <- 2
+    time.Sleep(time.Millisecond)
+}
+```
+
+创建10个 goroutine 进行消息接收，第一种写法，将 channel 创建放在调用函数中：
+
+```go
+func worker(id int, c chan int) {
+    for {
+        fmt.Printf("Worker %d, received %c\n", id, <-c)
+    }
+}
+
+func chanDemo() {
+    var channels [10]chan int
+    for i := 0; i < 10; i++ {
+        channels[i] = make(chan int)
+        go worker(i, channels[i])
+    }
+
+    for i := 0; i < 10; i++ {
+        channels[i] <- 'a' + i
+    }
+    time.Sleep(time.Millisecond)
+}
+```
+
+第二种写法，将 channel 作为参数返回，还可以将 channel 改为单向channel 或者 缓存channel
+
+接收数据的协程会一直接收数据，直到 chanDemo 函数执行结束，main函数也结束了
+
+```go
+func createWorker(id int) chan int {
+    c := make(chan int)
+    go func() {
+        for {
+            fmt.Printf("Worker %d, received %c\n", id, <-c)
+        }
+    }()
+    return c
+}
+
+func chanDemo() {
+    var channels [10]chan int
+    for i := 0; i < 10; i++ {
+        channels[i] = createWorker(i)
+    }
+
+    for i := 0; i < 10; i++ {
+        channels[i] <- 'a' + i
+    }
+    time.Sleep(time.Millisecond)
+}
+```
+
+接收数据的协程会接收数据直到通道关闭
+
+```go
+func worker(id int, c chan int) {
+    for v := range c {
+        fmt.Printf("Worker: %d, received %c\n", id, v)
+    }
+    // 另外一种写法
+    //for {
+    //  v, ok := <-c
+    //  if !ok {
+    //      break
+    //  }
+    //  fmt.Printf("Worker: %d, received %c\n", id, v)
+    //}
+}
+
+// 发送方 close channel
+func channelClose() {
+    c := make(chan int)
+    go worker(0, c)
+    c <- 'a'
+    c <- 'b'
+    c <- 'c'
+    c <- 'd'
+    close(c)
+    time.Sleep(time.Millisecond)
+}
+```
+
+不要通过共享内存来通信，要通过通信来共享内存
+
+```go
+// 定义工作者 done为工作完成时发送
+type worker struct {
+    in   chan int
+    done chan bool
+}
+
+func doWork(id int, w worker) {
+    for v := range w.in {
+        fmt.Printf("Worker: %d, received %c\n", id, v)
+        // 当10个 done chan 都已阻塞，均在等待外部读取数据，
+        // 这时如果再向 in chan 中写入数据会导致当前协程死锁
+        // 将 done chan 放在新的协程中，就不会阻塞当前协程，不影响从 in chan 读取
+        go func() { w.done <- true }()
+    }
+}
+
+func createWorker(id int) worker {
+    w := worker{in: make(chan int), done: make(chan bool)}
+    go doWork(id, w)
+    return w
+}
+
+func chanDemo() {
+    var workers [10]worker
+    for i := 0; i < 10; i++ {
+        workers[i] = createWorker(i)
+    }
+
+    for i, worker := range workers {
+        worker.in <- 'a' + i
+    }
+
+    // 如果不将 done chan 放入新的协程中，这里会造成当前协程死锁
+    for i, worker := range workers {
+        worker.in <- 'A' + i
+    }
+
+    for _, worker := range workers {
+        // 直到这里才开始从 done chan中读取数据
+        <-worker.done
+        <-worker.done
+    }
+}
+
+func main() {
+    chanDemo()
+}
+```
+
+第二种方法 使用 WaitGroup实现同步，类似与java里的 CountDownLatch
+
+```go
+type worker struct {
+    in   chan int
+    done func()
+}
+
+func doWork(id int, w worker) {
+    for v := range w.in {
+        fmt.Printf("Worker: %d, received %c\n", id, v)
+        w.done()
+    }
+}
+
+func createWorker(id int, wg *sync.WaitGroup) worker {
+    w := worker{in: make(chan int), done: func() { wg.Done() }}
+    go doWork(id, w)
+    return w
+}
+
+func chanDemo() {
+    var workers [10]worker
+    var wg sync.WaitGroup
+    for i := 0; i < 10; i++ {
+        workers[i] = createWorker(i, &wg)
+    }
+
+    wg.Add(20)
+    for i, worker := range workers {
+        worker.in <- 'a' + i
+    }
+
+    for i, worker := range workers {
+        worker.in <- 'A' + i
+    }
+    wg.Wait()
+}
+
+func main() {
+    chanDemo()
+}
+```
+
+### select
+
+select 最大的限制是每个case语句必须是一个channel操作
+
+```go
+func generator() chan int {
+    out := make(chan int)
+    go func() {
+        i := 0
+        for {
+            time.Sleep(time.Duration(rand.Intn(1500)) * time.Millisecond)
+            out <- i
+            i++
+        }
+    }()
+    return out
+}
+
+func createWorker(id int) chan<- int {
+    c := make(chan int)
+    go func() {
+        for n := range c {
+            time.Sleep(time.Second)
+            fmt.Println("Worker: ", id, "received: ", n)
+        }
+    }()
+    return c
+}
+
+func main() {
+    var c1, c2 = generator(), generator()
+    var queue []int
+    var worker = createWorker(0)
+    // 计时器
+    tm := time.After(20 * time.Second)
+    // 定时器
+    tick := time.Tick(time.Second)
+    for {
+        var activeWorker chan<- int // nil channel
+        var activeValue int
+        // 有值才初始化
+        if len(queue) > 0 {
+            activeWorker = worker
+            activeValue = queue[0]
+        }
+        select {
+        case v := <-c1:
+            queue = append(queue, v)
+        case v := <-c2:
+            queue = append(queue, v)
+        case activeWorker <- activeValue: // nil channel 会阻塞对该channel的所有读写
+            queue = queue[1:]
+        case <-time.After(800 * time.Millisecond): // 超时
+            fmt.Println("timeout")
+        case <-tick:
+            fmt.Println("len(queue): ", len(queue))
+        case <-tm:
+            fmt.Println("Bye")
+            return
+        }
+    }
+}
+```
+
+### 同步机制
+
+Mutex
+
 
 ## ipc & net/http
 

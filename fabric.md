@@ -287,6 +287,20 @@ Name: admin2, Type: client, Affiliation: org1.department1, Max Enrollments: -1, 
 
 默认情况下是不允许删除用户的，可以修改 server 属性允许删除
 
+### Enrolling 和 Registering的区别
+
+- Enrolling 在指定目录下产生MSP文件夹，`enroll` 命令将注册证书 `/signcerts/cert.pem` 、相应的私钥 `/keystore/*` 和CA证书链PEM文件 `localhost-7054.pem` 存储在fabric ca client 的  `msp` 目录的子目录中。
+- Registering 注册新的身份，并不会产生MSP文件夹
+
+在 `register` 命令中，Fabric CA Server 从三个方面进行授权检查
+
+1. 检查注册者是否包含 `hf.Registrar.Roles` 属性，以及属性列表中是否包含要注册的 `Roles`
+2. 注册者的组织关系必须等于或是被注册身份的组织关系的前缀
+3. 满足以下所有条件，注册者才可以注册具有相应属性的用户
+   - Registrar can register Fabric CA reserved attributes that have the prefix `hf.` only if the registrar possesses the attribute and it is part of the value of the `hf.Registrar.Attributes` attribute. Furthermore, if the attribute is of type list then the value of attribute being registered must be equal to or a subset of the value that the registrar has. If the attribute is of type boolean, the registrar can register the attribute only if the registrar’s value for the attribute is `true`.
+   - Registering custom attributes (i.e. any attribute whose name does not begin with `hf.`) requires that the registrar has the `hf.Registar.Attributes` attribute with the value of the attribute or pattern being registered. The only supported pattern is a string with a `*` at the end. For example, `a.b.*` is a pattern which matches all attribute names beginning with `a.b.`. For example, if the registrar has `hf.Registrar.Attributes = orgAdmin`, then the only attribute which the registrar can add or remove from an identity is the `orgAdmin` attribute.
+   - If the requested attribute name is `hf.Registrar.Attributes`, an additional check is performed to see if the requested values for this attribute are equal to or a subset of the registrar’s values for `hf.Registrar.Attributes`. For this to be true, each requested value must match a value in the registrar’s value for `hf.Registrar.Attributes` attribute. For example, if the registrar’s value for `hf.Registrar.Attributes` is `a.b.*, x.y.z` and the requested attribute value is `a.b.c, x.y.z`, it is valid because `a.b.c` matches `a.b.*` and `x.y.z` matches the registrar’s `x.y.z` value.
+
 ### 基于属性的访问控制
 
 访问控制决策可以由基于身份属性的链码（和由Hyperledger Fabric运行时）来实现，称为基于属性的访问控制，简称ABAC。
