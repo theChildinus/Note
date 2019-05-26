@@ -8,7 +8,7 @@
 
 ### 解决方法
 
-可写成`dpkg.sh`脚本自动执行
+可写成 `dpkg.sh` 脚本自动执行
 
 ```shell
 sudo mv /var/lib/dpkg/info /var/lib/dpkg/info.bak
@@ -27,28 +27,15 @@ sudo mv /var/lib/dpkg/info.bak /var/lib/dpkg/info
 
 解决办法：
 
-将报错的打印信息复制到txt文件中，执行python程序生成`fix.sh`脚本
+将报错的打印信息复制到 `error.txt` 文件中，执行脚本 `fix.sh`
 
-```python
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
-import re
-def main():
-    fix = open('fix.sh', 'w+')
-    # 1.txt为打印信息的文本
-    for line in open("1.txt"):
-        pkg = re.match(re.compile('''dpkg: warning: files list file for package '(.+)' '''), line)
-        if pkg:
-            cmd = "sudo apt-get install --reinstall -y " + pkg.group(1)
-            fix.write(cmd + '\n')
-if __name__ == "__main__":
-    main()
+```sh
+for package in $(grep -P -o "\ ([a-zA-Z0-9:-]*?)\ " error.txt);
+do apt-get install -y --reinstall "$package";
+done
 ```
 
-`fix.sh`脚本中的内容为：`sudo apt-get install --reinstall -y XXXXXX`
-
-该脚本执行时间较长，如果仍出现问题`E: Sub-process /usr/bin/dpkg returned an error code (1)`，暂停程序重复执行脚本`dpkg.sh`，并重新复制内容到1.txt中循环往复
+该脚本执行时间较长，如果仍出现问题`E: Sub-process /usr/bin/dpkg returned an error code (1)`，暂停程序重复执行脚本`dpkg.sh`，并重新复制内容到 `error.txt`，再次执行脚本 `fix.sh`
 
 ## 问题2
 
