@@ -109,6 +109,27 @@ HTTP请求方法定义了发送请求的客户端想要执行的动作，而HTTP
 
 ### URI
 
+Tim Berners-Lee 引入使用位置字符串表示互联网资源的概念，对`统一资源标识符（URI）`进行了定义，他描述了一种使用字符串表示资源名字的方法，以及一种使用字符串表示资源所在位置的方法，前一种方法被称为`统一资源名称（URN）`，后一种方法被称为`统一资源定位符（URL）`
+
+URI的一般格式为：
+
+<方案名称>:<分层部分>[ ? <查询参数> ] [ # <片段> ]
+
+- 方案名称记录了URI正在使用的方案，它定义了URI其余部分的结构
+- 分层部分包含了资源的识别信息，这些信息会以分层的方式进行组织，如果分层部分以双斜杠//开头，那么说明它包含了可选的用户信息，这些信息将以@符号结尾，后跟分层路径
+
+在URI的各个部分当中，只有方案名称和分层部分是必需的，以问号为前缀的查询参数是可短的，这些参数用于包含无法使用分层方式表示的其他信息，多个查询参数会被组织成一连串的键值对，各个键值对之间使用&符号分隔
+
+URI另一个可选部分是片段，片段使用井号作为前缀，它可以对URI定义的资源中的次级资源进行标识。
+
+使用HTTP方案的URI示例：
+
+```txt
+http://sausheong:password@www.example.com/docs/file?name=sausheong&location-singapore#summary
+```
+
+这个URI使用的是http方案，跟在方案名之后的是一个冒号，位于@符号之前的分段 `sausheong:password`记录的是用户名和密码，跟在用户信息之后的`www.example.com/docs/file`就是分层部分的剩余部分。跟在分层部分之后的是以问号为前缀的查询参数，这个部分包含了 `name=sausheong`和`location=singapore`这两个键值对，键值对之间使用一个&符号连接，最后这个URI的末尾还带有一个以井号为前缀的片段
+
 ### HTTP/2 简介
 
 与使用纯文本方式表示的HTTP1.x不同，HTTP/2是一种二进制协议：二进制表示不仅能够让HTTP/2的语法分析变得更为高效，还能让协议变得更加紧凑和健壮
@@ -137,4 +158,299 @@ Web应用中的处理器除了要接收和处理和客户端发来的请求，�
 
 - 静态模板 是一些夹杂着占位符的HTML，静态模板引擎通过将静态模板中的占位符替换成响应的数据来生成最终的HTML
 - 动态模板 除了包含HTML和占位符之外，还包含一些编程语言结构，如条件语句、迭代语句和变量 JSP/ASP/ERB 都属于动态模板引擎
+
+### Hello Go
+
+```go
+import (
+	"fmt"
+	"log"
+	"net/http"
+)
+
+func handler(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, "Hello World! %s", r.URL.Path[1:])
+}
+
+func main() {
+	http.HandleFunc("/", handler)
+	err := http.ListenAndServe(":8080", nil)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+}
+```
+
+## 第二章 ChitChat论坛
+
+### 应用设计
+
+当请求到达服务器时，多路复用器会对请求进行检查，并将请求重定向到正确的处理器进行处理，处理器在接收到多路复用转发的请求之后，会从请求中去除相应的信息，并根据这些信息对请求进行处理，在处理请求完毕之后，处理器会将所得的数据传递给模板引擎，而模板引擎则会根据这些数据生成将要返回给客户端的HTML，整个过程如下：
+
+![多路复用](image/20190818151333.png)
+
+### 数据模型
+
+绝大多数应用都需要以某种方式与数据打交道，对ChitChat来说，它的数据包括四种数据结构
+
+- User - 表示论坛的用户信息
+- Session - 表示论坛用户当前的登录会话
+- Thread - 表示论坛里面的帖子，每一个帖子记录了多个论坛用户之间的对话
+- Post - 表示用户在帖子里面添加的回复
+
+### 请求的接收和处理
+
+Web 应用的工作流程如下：
+
+1. 客户将请求发送到服务器的一个URL上
+2. 服务器的多路复用器将接收到的请求重定向到正确的处理器，然后由该处理器请求进行处理
+3. 处理器处理请求并执行必要的动作
+4. 处理器调用模板引擎，生成相应的HTML并将其返回给客户端
+
+#### 多路复用器
+
+```go
+func index(w http.ResponseWriter, r *http.Request) {
+	...
+}
+
+func main() {
+	fmt.Println("Hello world")
+    // net/http 提供的默认多路复用器
+	mux := http.NewServeMux()
+    
+    // 服务器接收到一个以/static/开头的URL请求，以下两行会移除URL中的/static/字符串，然后再public目录中查找被请求的文件
+	files := http.FileServer(http.Dir("/public"))
+	mux.Handle("/static/", http.StripPrefix("/static/", files))
+
+    // 将发送至根URL的请求重定向到处理器
+	mux.HandleFunc("/", index)
+
+	server := &http.Server{Addr: "0.0.0.0:8080", Handler: mux}
+	err := server.ListenAndServe()
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+}
+```
+
+因为所有处理器都接受一个 ResponseWriter 和一个指向 Request 结构的指针作为参数，并且所有请求参数都可以通过访问 Request 结构得到，所以程序不需要向处理器显示地传入任何请求参数
+
+#### 服务静态文件
+
+除了负责请求重定向到相应的处理器之外，多路复用器还需要为静态文件提供服务，为了做到这一点，程序使用FileServer函数创建了一个能够为指定目录中的静态文件服务的处理器，并将这个处理器传递给多路复用器的Handle函数，初次之外，程序还是用 StripPrefix 函数去移除请求URL中的指定前缀
+
+#### 创建处理器函数
+
+```go
+func index(w http.ResponseWriter, r *http.Request) {
+	files := []string {
+		"templates/layout.html",
+		"templates/navbar.html",
+		"templates/index.html",
+	}
+	templates := template.Must(template.ParseFiles(files...))
+	threads, err := data.Threads(); if err != nil {
+		templates.ExecuteTemplate(w, "layout", threads)
+	}
+}
+```
+
+index 函数负责生成HTML并将其接入 ResponseWriter 中
+
+#### 使用 cookie 进行访问控制
+
+当一个用户成功登录之后，服务器必须在后续的请求中标示出这是一个已登录的用户，为了做到这一点服务器会在响应的首部写入一个cookie，而客户端在接收到这个cookie之后则会把它存储在浏览器里面
+
+```go
+func authenticate(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+    // 通过给定的邮箱地址获取与之对应的User结构
+	user, _ := data.UserByEmail(r.PostFormValue("email"))
+	if user.Password == data.Encrypt(r.PostFormValue("password")) {
+		session := user.CreateSession()
+        
+        // 创建Session结构之后，程序又创建了 Cookie 结构
+		cookie := http.Cookie{
+			Name:     "_cookie",
+			Value:    session.Uuid,
+			HttpOnly: true,
+		}
+		http.SetCookie(w, &cookie)
+		http.Redirect(w, r, "/", 302)
+	} else {
+		http.Redirect(w, r, "/login", 302)
+	}
+}
+```
+
+在验证用户身份的时候，程序必须先确保用户是真实存在的，并且提交给处理器的密码在加密之后跟存储在数据库里面已经加密用户密码完全一致，在核实了用户的身份之后，程序会使用User结构的CreateSession方法创建一个Session结构，该结构如下：
+
+```go
+type Session struct {
+	Id       int
+	Uuid     string    // 随机生成的唯一ID
+	Email    string    // 邮箱地址
+	UserId   int       // 用户表中存储用户信息的行ID
+	CreateAt time.Time
+}
+```
+
+Uuid 是实现会话机制的核心，服务器会通过cookie把这个ID存储到浏览器里，并把Session结构中记录的各项信息存储到数据库中
+
+cookie 的值是将要被存储在浏览器里面的唯一ID，因为程序没有给cookie设置过期时间，所以这个cookie就成了一个会话cookie，在浏览器关闭时自动被移除
+
+在将Cookie存储到浏览器里面之后，程序接下来要做到在处理器函数里面检查当前访问的用户是否已经登录，为此我们需要创建一个名为session的工具函数（util.go），并在各个处理器函数里面复用它
+
+```go
+func session(w http.ResponseWriter, r *http.Request) (data.Session, error) {
+	cookie, err := r.Cookie("_cookie")
+	if err == nil {
+		sess = data.Session{Uuid: cookie.Value}
+        // 访问数据库并核实会话的唯一ID是否存在
+		if ok, _ := sess.Check(); !ok {
+			err = errors.New("Invalid session")
+		}
+		return sess, nil
+	}
+	return nil, err
+}
+```
+
+### 使用模板生成HTML响应
+
+index 处理器函数里面的大部分代码都是用来为客户端生成HTML的，首先函数把每个需要用到的模板文件都放到GO切片里面
+
+```go
+func index(w http.ResponseWriter, r *http.Request) {
+	_, err := session(w, r)
+	public_tmpl_files := []string {
+		"templates/layout.html",
+		"templates/public.navbar.html",
+		"templates/index.html",
+	}
+	private_tmpl_files := []string{
+		"templates/layout.html",
+		"templates/private.navbar.html",
+		"templates/index.html",
+	}
+	var templates *template.Template
+	if err != nil {
+		templates = template.Must(template.ParseFiles(public_tmpl_files...))
+	} else {
+		templates = template.Must(template.ParseFiles(private_tmpl_files...))
+	}
+   	threads, err := data.Threads(); if err == nil {
+		templates.ExecuteTemplate(w, "layout", threads)
+	}
+}
+```
+
+跟Mustache 和 CTemplate 等其他模板引擎一样，切片指定的这三个HTML文件都包含了特定的嵌入命令（动作）
+
+layout.html：
+
+```html
+{{ define "layout" }}
+
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=9">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>ChitChat</title>
+        <link href="/static/css/bootstrap.min.css" rel="stylesheet">
+        <link href="/static/css/font-awesome.min.css" rel="stylesheet">
+    </head>
+    <body>
+     <!-- 引用其他模板文件的 template 动作 . 代表传递给引用模板的数据 -->
+     <!-- 传递给layout模板的数据也会传递给navbar模板 -->
+    {{ template "navbar" . }}
+
+    <div class="container">
+
+        {{ template "content" . }}
+
+    </div> <!-- /container -->
+
+    <script src="/static/js/jquery-2.1.1.min.js"></script>
+    <script src="/static/js/bootstrap.min.js"></script>
+    </body>
+    </html>
+
+{{ end }}
+```
+
+index.html：
+
+```html
+{{ define "content" }}
+    <p class="lead">
+        <a href="/thread/new">Start a thread</a> or join one below!
+    </p>
+
+    {{ range . }}
+        <div class="panel panel-default">
+            <div class="panel-heading">
+                <span class="lead"> <i class="fa fa-comment-o"></i> {{ .Topic }}</span>
+            </div>
+            <!-- {{.User.Name}} 这些动作和之前展示过的index处理器函数有关 -->
+            <div class="panel-body">
+                Started by {{ .User.Name }} - {{ .CreatedAtDate }} - {{ .NumReplies }} posts.
+                <div class="pull-right">
+                    <a href="/thread/read?id={{.Uuid }}">Read more</a>
+                </div>
+            </div>
+        </div>
+    {{ end }}
+
+{{ end }}
+```
+
+在以下这行代码中：
+
+```go
+templates.ExecuteTemplate(w, "layout", threads)
+```
+
+程序通过调用 ExecuteTemplate 函数，执行已经经过语法分析的layout模板，即把模板文件中的内容和来自其他渠道的数据合并，然后产生最终的HTML
+
+
+
+![](image/20190818174900.png)
+
+#### 整理代码
+
+生成HTML的代码会被重复执行多次，我们把这些代码进行整理，空接口让任何类型的之都可以传递给函数作为参数，最后的 ... 表示generateHTML函数是一个可变参数函数
+
+```go
+func generateHTML(writer http.ResponseWriter, data interface{}, filenames ...string) {
+	var files []string
+	for _, file := range filenames {
+		files = append(files, fmt.Sprintf("templates/%s.html", file))
+	}
+
+	templates := template.Must(template.ParseFiles(files...))
+	templates.ExecuteTemplate(writer, "layout", data)
+}
+```
+
+index处理器函数变为：
+
+```go
+func index(writer http.ResponseWriter, request *http.Request) {
+	threads, err := data.Threads(); if err == nil {
+		_, err := session(writer, request)
+		if err != nil {
+			generateHTML(writer, threads, "layout", "public.navbar", "index")
+		} else {
+			generateHTML(writer, threads, "layout", "private.navbar", "index")
+		}
+	}
+}
+```
 
