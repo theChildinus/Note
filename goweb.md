@@ -727,4 +727,150 @@ func (mux *ServeMux) HandleFunc(pattern string, handler func(ResponseWriter, *Re
 
 #### 串联多个处理器和处理器函数
 
+程序可以将一个函数传递给另一个函数，又或者通过标识符去引用一个具名函数，这意味着程序可以将函数 f1 传递给另一个函数 f2，然后在函数 f2 执行完某些操作之后调用 f1
+
+![1566392935190](D:\Note\image\1566392935190.png)
+
+诸如日志记录、安全检查和错误处理这样的操作通常被称为 横切关注点，虽然这些操作非常常见，但是为了防止代码重复和代码依赖问题，我们又不希望这些操作额正常的代码搅和在一起，为此我们可以使用串联（chaining）技术分隔代码中的横切关注点
+
+```go
+func hello(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, "Hello")
+}
+
+func log(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := runtime.FuncForPC(reflect.ValueOf(h).Pointer()).Name()
+		fmt.Println("Handler function called - " + name)
+		h(w, r)
+	}
+}
+
+func main() {
+	server := http.Server{
+		Addr: "127.0.0.1:8080",
+	}
+	http.HandleFunc("/hello", log(hello))
+	server.ListenAndServe()
+}
+```
+
+除处理器函数 `hello` 之外，这个代码清单还包含了一个 `log` 函数，`log` 函数接受一个 `HandlerFunc` 类型的函数作为参数，然后返回另一个 `HandlerFunc` 类型作为值，因为 `hello` 函数就是一个 `HandlerFunc` 类型的函数，所以代码 `log(hello)`实际上是就是将 `hello` 函数发送至 `log` 函数之内，换句话说，这段代码串联起了 `log` 函数和 `hello` 函数
+
+log 函数的返回值是一个匿名函数，因为这个匿名函数 接受一个 ResponseWriter 和一个 Request 指针作为参数，所以它实际上也是一个 HandlerFunc，在匿名函数内部，程序首先会获取被传入的 HandlerFunc 的名字，然后调用这个 HandlerFunc。
+
+就像搭积木一样，既然我们可以串联起两个函数，那么自然也可以串联起更多函数，串联多个函数可以让程序执行更多动作，这种做法有时候也称为 管道处理
+
+ 如果我们还有一个protect 函数，用于验证身份
+
+```go
+func protect(h http.HandlerFunc) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        ...
+        h(w, r)
+    }
+}
+```
+
+我们只需要把 protect 函数跟之前的函数串联在一起，就可以正常使用了：
+
+```go
+http。HandleFunc("/hello", protect(log(hello)))
+```
+
+以上提到的都是串联处理器函数，串联处理器的方法实际上和串联处理器函数的方法是非常相似的
+
+```go
+type HelloHandler struct{}
+
+func (h HelloHandler) ServeHTTP (w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, "Hello")
+}
+
+// log 不再接受和返回 HandlerFunc 类型的函数，而是接受并返回 Handler类型的处理器
+func log(h http.Handler) http.Handler {
+	return http.HandlerFunc (func(w http.ResponseWriter, r *http.Request) {
+		fmt.Printf("Handler called = %T\n", h)
+		h.ServeHTTP(w, r)
+	})
+}
+// log和protect函数不再返回匿名函数，而是使用HandlerFunc直接将匿名函数转换成一个Handler，然后返回这个Handler
+// 程序现在也不再直接执行处理器函数了，而是调用处理器的ServeHTTP函数
+func protect(h http.Handler) http.Handler {
+	return http.HandlerFunc (func(w http.ResponseWriter, r *http.Request) {
+        ...
+		h.ServeHTTP(w, r)
+	})
+}
+
+func main() {
+	server := http.Server{
+		Addr: "127.0.0.1:8080",
+	}
+	hello := HelloHandler{}
+	// 程序现在绑定的是处理器而不是处理器函数
+	http.Handle("/hello", protect(log(hello)))
+	server.ListenAndServe()
+}
+```
+
+#### ServeMux 和 DefaultServeMux
+
+ServeMux 是一个HTTP请求多路复用器，它负责接受HTTP请求并根据请求中的URL将请求重定向到正确的处理器
+
+ServeMux 结构包含了一个映射，这个映射会将URL映射至响应的处理器，因为 ServeMux 结构也实现了ServeHTTP 方法，所以它也是一个处理器，当 ServeMux 的 ServeHTTP 方法接收到一个请求的时候，他会在结构的映射里面找出与请求URL 最为匹配的 URL，然后调用与之相对应的处理器的 ServeHTTP 方法
+
+![1566392872414](D:\Note\image\1566392872414.png)
+
+因为 ServeMux 是一个结构而不是一个接口，所以 DefaultServeMux 并不是 ServeMux 的实现，DefaultServeMux 实际上是 ServeMux 的一个实例，并且所有引入了 net/http 标准库的程序都可以使用这个实例，当用户没有为 Server 结构指定处理器时，服务器就会使用 DefaultServeMux 作为 ServeMux 的默认实例
+
+因为ServeMux也是一个处理器，所以用户可以在有需要的情况下对其实例实施处理器串联
+
+对于图3-6所示的例子，服务器会用 indexHandler 去处理对 `/hello/there` 的请求
+
+> 最小惊讶原则：指的是我们在进行设计的时候，应该做哪些合乎常理的事情，使事物的行为总是显而易见、始终如一并且合乎情理
+
+产生这种行为的原因在于程序在绑定 `helloHandler` 时使用的URL是 `/hello`，而不是 `/hello/`，如果绑定的URL不是以`/`结尾，那么它只会与完全相同的URL8匹配，如果绑定的URL以 `/` 结尾，那么即使请求的URL只有前缀部分与被绑定URL相同，ServeMux 也会认定这两个URL是匹配的
+
+这也就是说，如果与 helloHandler 处理器绑定的URL是 `/hello/`  而不是  `/hello` ，那么当浏览器请求 `/hello/there` 的时候，服务器在找不到与之完全匹配的处理器时，就会退而求其次开始寻找能够与 `/hello/` 匹配的处理器，并最终找到 helloHandler 处理器
+
 ### 3.4 使用HTTP/2
+
+为了让构建的Web服务器用上 HTTP/2，我们需要给这个服务器导入 http2 包，并通过添加一些代码行来让服务器打开对 HTTP/2 的支持
+
+```go
+package main
+
+import (
+	"fmt"
+    "golang.org/x/net/http2"
+	"net/http"
+)
+
+type MyHandler struct{}
+
+func (h *MyHandler) ServeHTTP (w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, "Hello World!")
+}
+
+func main() {
+	handler := MyHandler{}
+	server := http.Server{
+		Addr: "127.0.0.1:8080",
+		Handler: &handler,
+	}
+
+	http2.ConfigureServer(&server, &http2.Server{})
+	server.ListenAndServeTLS("cert.pem", "key.pem")
+}
+```
+
+cURL 测试代码是否启用了 HTTP/2，--insecure 用于让cURL强制接受我们创建的证书，从而使访问可以顺利进行
+
+```txt
+curl -I --http2 --insecure https://localhost:8080/
+```
+
+## 第四章 处理请求
+
+### 4.1 请求和响应
