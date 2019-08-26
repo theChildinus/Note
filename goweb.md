@@ -872,5 +872,3 @@ curl -I --http2 --insecure https://localhost:8080/
 ```
 
 ## 第四章 处理请求
-
-### 4.1 请求和响应
