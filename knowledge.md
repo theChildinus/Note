@@ -239,7 +239,7 @@ gRPC基于HTTP2协议，HTTP2 使得 gRPC 能够更好的适用于移动客户�
 
 帧：HTTP/2 抛弃 HTTP/1 的文本协议改为二进制协议，HTTP/2 的基本传输单元为帧，每个帧都从属于某个流
 
-![http2-stream](image\http2-stream.png)
+![http2-stream](image/http2-stream.png)
 
 gRPC over HTTP/2
 
