@@ -233,6 +233,45 @@ rpc框架一般基于tcp或者http协议实现。基于http的rpc框架的优缺
 - 优点：HTTP/1.x协议简单明了，是目前最流行的应用层协议，有着非常成熟且完善的各种基础设施，如负载均衡、监控、代理等，适用性广泛，各个设备系统均有实现
 - 缺点：就是HTTP/1.x采用的是文本协议，解析速度慢，带宽占用高。而且request/response的通信方法导致整体效率不高。
 
+#### HTTP/2
+
+影响一个网络请求的因素主要有两个：延迟和带宽。http1.0 被抱怨最多的两个问题是 **连接无法复用** 和 **head of line blocking** 这两个问题，连接无法复用会导致每次请求都经历三次握手和慢启动，三次握手在要求低延迟的场景下影响较大，慢启动对文件类请求影响较大；head of line blocking 会导致带宽无法充分被利用，以及后续健康请求被阻塞
+
+解决连接无法复用：
+
+1. 基于tcp的长连接，基于TCP自己建立一套长连接通道
+2. http long-polling，客户端发送polling，服务器端等待有新的业务数据产生再返回，缺点：重复的header信息，数据通道是单向的，客户端有新业务请求也无法传送
+3. http streaming，response 头部中加入 chunked 字段，server并不会结束初始的streaming请求，而是持续的通过这个通道返回最新的业务数据。显然这个数据通道也是单向的
+4. web socket，基于tcp，供双向的数据通道。WebSocket优势在于提供了message的概念，比基于字节流的tcp socket使用更简单，同时又提供了传统的http所缺少的长连接功能。
+
+解决head of line blocking
+
+1. http pipelining，只适用于http1.1，只有幂等的请求可以使用，没有完全解决head of line blocking
+
+HTTP/2 的主要改动
+
+1. **新的二进制格式**
+
+![](image/Snipaste_2019-09-03_15-21-31.png)
+
+http2.0的格式定义更接近tcp层的方式，这张二机制的方式十分高效且精简。length定义了整个frame的开始到结束，type定义frame的类型（一共10种），flags用bit位定义一些重要的参数，stream id用作流控制，剩下的payload就是request的正文了。
+
+虽然看上去协议的格式和http1.x完全不同了，实际上http2.0并没有改变http1.x的语义，只是把原来http1.x的header和body部分用frame重新封装了一层而已。调试的时候浏览器甚至会把http2.0的frame自动还原成http1.x的格式。具体的协议关系可以用下图表示：
+
+![](image/Snipaste_2019-09-03_15-18-45.png)
+
+2. **连接共享**
+
+   http2.0要解决的一大难题就是多路复用（MultiPlexing），即连接共享。上面协议解析中提到的stream id就是用作连接共享机制的。一个request对应一个stream并分配一个id，这样一个连接上可以有多个stream，每个stream的frame可以随机的混杂在一起，接收方可以根据stream id将frame再归属到各自不同的request里面。
+
+3. **header 压缩**
+
+   HTTP/2 对消息头采用 HPACK 进行压缩传输，能够节省消息头占用的网络的流量，防止慢启动阶段超过初始化窗口大小导致延迟高的问题，（初始化窗口调高会导致网络节点阻塞，丢包率增加）
+
+4. **Server Push**
+
+   服务端能够更快的把资源推送给客户端。例如服务端可以主动把 JS 和 CSS 文件推送给客户端，而不需要客户端解析 HTML 再发送这些请求。当客户端需要的时候，它已经在客户端了。
+
 gRPC基于HTTP2协议，HTTP2 使得 gRPC 能够更好的适用于移动客户端和服务端通信的使用场景，并且连接多路复用也保证了RPC 的效率。grpc 的协议设计上很好的使用了HTTP2 现有的语义，请求和响应的数据使用HTTP Body 发送，其他的控制信息则用 Header 表示。
 
 流：是服务器和客户端在 HTTP/2 连接内用于交换帧数据的独立双向序列，逻辑上可看作一个较为完整的交互处理单元，HTTP/2 连接上传输的每个帧都关联到一个流，一个连接上可以同时有多个流，同一个流的帧按序传输，不同流的帧交错混乱传输
@@ -240,6 +279,8 @@ gRPC基于HTTP2协议，HTTP2 使得 gRPC 能够更好的适用于移动客户�
 帧：HTTP/2 抛弃 HTTP/1 的文本协议改为二进制协议，HTTP/2 的基本传输单元为帧，每个帧都从属于某个流
 
 ![http2-stream](image/http2-stream.png)
+
+
 
 gRPC over HTTP/2
 
