@@ -287,13 +287,100 @@ func main() {
 }
 ```
 
-### 1. G
+支撑整个调度器的主要有4个重要结构，分别是M、G、P、Sched
 
-### 2. M
+- Sched结构就是调度器，它维护有存储M和G的队列以及调度器的一些状态信息等
 
-### 3. P
+- G就是goroutine实现的核心结构了，G维护了goroutine需要的栈、程序计数器以及它所在的M等信息。
+- M代表内核级线程，一个M就是一个线程，goroutine就是跑在M之上的
+- P是一个抽象的概念，并不是真正的物理CPU，P全称是Processor，处理器，它的主要用途就是用来执行goroutine的，所以它也维护了一个goroutine队列，里面存储了所有需要它来执行的goroutine
 
+三者关系：地鼠(gopher)用小车运着一堆待加工的砖。M就可以看作图中的地鼠，P就是小车，G就是小车里装的砖
 
+![img](image/golang-car.jpeg)
+
+### 启动过程
+
+```txt
+CALL	runtime·args(SB)
+CALL	runtime·osinit(SB)
+CALL	runtime·hashinit(SB)
+CALL	runtime·schedinit(SB)
+
+// create a new goroutine to start program
+PUSHQ	$runtime·main·f(SB)		// entry
+PUSHQ	$0			// arg size
+CALL	runtime·newproc(SB)
+POPQ	AX
+POPQ	AX
+
+// start this M
+CALL	runtime·mstart(SB)
+```
+
+- `runtime schedinit` 根据用户设置的 `GOMAXPROCS` 创建一批小车（p），这些小车初始化创建后都是闲置状态，也就是没有开始使用，所以它们都放置在调度结构（Sched）的 `pidle` 字段维护
+
+- `runtime newproc` 创建出第一个 goroutine，这个 goroutine 将执行的函数是 `runtime main`，这是第一个goroutine 也就是作为的主goroutine，任何一个Go程序的入口都是从这个goroutine开始的
+- 查看 `runtime main` 函数可以了解到主 goroutine 开始执行后，做的第一件事情是创建一个新的内核线程（地鼠M），不过这个线程是一个特殊线程，它在整个运行期专门负责做特定的事情 - 系统监控
+
+### 创建 goroutine
+
+go关键字就是用来创建一个goroutine的，后面的函数就是这个goroutine需要执行的代码逻辑。go关键字对应到调度器的接口就是`runtime·newproc`。`runtime·newproc` 干的事情很简单，就负责制造一块砖(G)，然后将这块砖(G)放入当前这个地鼠(M)的小车(P)中。
+
+### 创建内核线程
+
+Go程序中没有语言级的关键字让你去创建一个内核线程，你只能创建goroutine，内核线程只能由runtime根据实际情况去创建
+
+runtime什么时候创建线程？以地鼠运砖图来讲，砖(G)太多了，地鼠(M)又太少了，实在忙不过来，刚好还有空闲的小车(P)没有使用，那就从别处再借些地鼠(M)过来直到把小车(p)用完为止。这里有一个地鼠(M)不够用，从别处借地鼠(M)的过程，这个过程就是创建一个内核线程(M)
+
+```c
+void newm(void (*fn)(void), P *p)
+```
+
+newm函数的核心行为就是调用clone系统调用创建一个内核线程，每个内核线程的开始执行位置都是`runtime·mstart` 函数，newm接口只是给新创建的M分配了一个空闲的P，也就是相当于告诉借来的地鼠(M)接下来用哪个小车工作
+
+### 调度核心
+
+```c
+schedule(void)
+{
+	G *gp;
+
+	gp = runqget(m->p);
+	if(gp == nil)
+		gp = findrunnable();
+
+	if (m->p->runqhead != m->p->runqtail &&
+		runtime·atomicload(&runtime·sched.nmspinning) == 0 &&
+		runtime·atomicload(&runtime·sched.npidle) > 0)  // TODO: fast atomic
+		wakep();
+
+	execute(gp);
+}
+```
+
+调度的四大逻辑：
+
+1. `runqget`, 地鼠(M)试图从自己的小车(P)取出一块砖(G)，当然结果可能失败，也就是这个地鼠的小车已经空了，没有砖了。
+2. `findrunnable`, 如果地鼠自己的小车中没有砖，那也不能闲着不干活是吧，所以地鼠就会试图跑去工场仓库（调度器Sched的全局等待队列）取一块砖来处理；工场仓库也可能没砖啊，出现这种情况的时候，这个地鼠也没有偷懒停下干活，而是悄悄跑出去，随机盯上一个小伙伴(地鼠)，然后从它的车里试图偷一半砖到自己车里。如果多次尝试偷砖都失败了，那说明实在没有砖可搬了，这个时候地鼠就会把小车还回停车场，然后`睡觉`休息了。如果地鼠睡觉了，下面的过程当然都停止了，地鼠睡觉也就是线程sleep了。
+3. `wakep`, 到这个过程的时候，可怜的地鼠发现自己小车里有好多砖啊，自己根本处理不过来；再回头一看停车场居然有闲置的小车，查看是否由其他地鼠在睡觉，小伙伴醒了，拿上自己的小车，乖乖干活去了。有时候，可怜的地鼠发现没有在睡觉的小伙伴，于是会很失望，最后只好向系统提出申请：””停车场还有闲置的车，快从别的工场借个地鼠来帮忙吧”，最后系统就搞来一个新的地鼠干活了。
+4. `execute`，地鼠拿着砖放入火种欢快的烧练起来。
+
+![img](image/gopher-bz.jpg)
+
+地鼠偷砖的过程称为：work stealing 算法
+
+### 调度点
+
+当我们翻看channel的实现代码可以发现，对channel读写操作的时候会触发调用 `runtime·park` 函数。goroutine调用park后，这个goroutine就会被设置位waiting状态，放弃cpu。被park的goroutine处于waiting状态，并且这个goroutine不在小车(P)中，如果不对其调用 `runtime·ready`，它是永远不会再被执行的
+
+除了park可以放弃cpu外，调用 `runtime·gosched` 函数也可以让当前goroutine放弃cpu，但和park完全不同，`gosched` 是将goroutine设置为runnable状态，然后放入到调度器全局等待队列
+
+### 上下文切换问题
+
+上下文切换的成本只是goroutine切换的成本
+
+goroutine在cpu上换入换出，不断上下文切换的时候，必须要保证的事情就是`保存现场`和`恢复现场`，保存现场就是在goroutine放弃cpu的时候，将相关寄存器的值给保存到内存中；恢复现场就是在goroutine重新获得cpu的时候，需要从内存把之前的寄存器信息全部放回到相应寄存器中去。
 
 ## 简单的生产者消费者模型
 
