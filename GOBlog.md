@@ -271,7 +271,31 @@ Java中的 CMS （Concurrent Mark Sweep）收集器，Mark Sweep 指的是标记
 
 在整个过程中耗时最长的并发标记和并发清除过程中，收集器线程都可以与用户线程一起工作，不需要进行停顿。存在浮动垃圾，浮动垃圾是指并发清除阶段由于用户线程继续运行而产生的垃圾，这部分垃圾只能到下一次 GC 时才能进行回收。
 
-## GMP模型
+## Go Scheduler
+
+### goroutine 和 thread 的区别
+
+- 内存占用
+
+  创建一个 goroutine 的栈内存消耗为 2 KB，实际运行过程中，如果栈空间不够用，会自动进行扩容。创建一个 thread 则需要消耗 1 MB 栈内存，而且还需要一个被称为 “a guard page” 的区域用于和其他 thread 的栈空间进行隔离
+
+- 创建和销毁
+
+  thread 创建和销毀都会有巨大的消耗，因为要和操作系统打交道，是内核级的，通常解决的办法就是线程池。而 goroutine 因为是由 Go runtime 负责管理的，创建和销毁的消耗非常小，是用户级。
+
+- 切换
+
+  thread 切换时，需要保存各种寄存器，包括 16个通用寄存器，PC、SP等等，而 goroutines 切换只需保存三个寄存器：PC, SP and BP，线程切换会消耗 1000-1500 纳秒，执行指令的条数会减少 12000-18000， Goroutine 的切换约为 200 ns，相当于 2400-3600 条指令。
+
+### 什么是 scheduler
+
+Go 程序的执行由两层组成：Go Program，Runtime，它们之间通过函数调用来实现内存管理、channel 通信、goroutines 创建等功能。用户程序进行的系统调用都会被 Runtime 拦截，以此来帮助它进行调度以及垃圾回收相关的工作。
+
+![img](image/go-scheduler.png)
+
+## scheduler 原理：GPM模型
+
+> scheduler 的目标：For scheduling goroutines onto kernel threads.
 
 并发：逻辑上具有处理多个同时性任务的能力，并行：物理上同一时刻执行多个并发任务
 
@@ -291,96 +315,81 @@ func main() {
 
 - Sched结构就是调度器，它维护有存储M和G的队列以及调度器的一些状态信息等
 
-- G就是goroutine实现的核心结构了，G维护了goroutine需要的栈、程序计数器以及它所在的M等信息。
-- M代表内核级线程，一个M就是一个线程，goroutine就是跑在M之上的
-- P是一个抽象的概念，并不是真正的物理CPU，P全称是Processor，处理器，它的主要用途就是用来执行goroutine的，所以它也维护了一个goroutine队列，里面存储了所有需要它来执行的goroutine
+- G 就是goroutine实现的核心结构了，G维护了goroutine需要的栈、程序计数器以及它所在的M等信息。
+- M 代表内核级线程，一个M就是一个线程，goroutine就是跑在M之上的
+- P 是一个抽象的概念，并不是真正的物理CPU，P全称是Processor，处理器，代表一个虚拟的 Processor，它维护一个处于 Runnable 状态的 g 队列， `m` 需要获得 `p` 才能运行 `g`
 
 三者关系：地鼠(gopher)用小车运着一堆待加工的砖。M就可以看作图中的地鼠，P就是小车，G就是小车里装的砖
 
 ![img](image/golang-car.jpeg)
 
+Runtime 起始时会启动一些 G：垃圾回收的 G，执行调度的 G，运行用户代码的 G；并且会创建一个 M 用来开始 G 的运行。随着时间的推移，更多的 G 会被创建出来，更多的 M 也会被创建出来。
+
+Go scheduler 的核心思想是：
+
+1. reuse threads；
+2. 限制同时运行（不包含阻塞）的线程数为 N，N 等于 CPU 的核心数目；
+3. 线程私有的 runqueues，并且可以从其他线程 stealing goroutine 来运行，线程阻塞后，可以将 runqueues 传递给其他线程。
+
 ### 启动过程
 
-```txt
-CALL	runtime·args(SB)
-CALL	runtime·osinit(SB)
-CALL	runtime·hashinit(SB)
-CALL	runtime·schedinit(SB)
+Runtime 起始时会启动一些 G：垃圾回收的 G，执行调度的 G，运行用户代码的 G；并且会创建一个 M 用来开始 G 的运行。随着时间的推移，更多的 G 会被创建出来，更多的 M 也会被创建出来。
 
-// create a new goroutine to start program
-PUSHQ	$runtime·main·f(SB)		// entry
-PUSHQ	$0			// arg size
-CALL	runtime·newproc(SB)
-POPQ	AX
-POPQ	AX
+Go 程序启动后，会给每个逻辑核心分配一个 P（Logical Processor）；同时，会给每个 P 分配一个 M（Machine，表示内核线程），这些内核线程仍然由 OS scheduler 来调度。在初始化时，Go 程序会有一个 G（initial Goroutine），执行指令的单位。G 会在 M 上得到执行
 
-// start this M
-CALL	runtime·mstart(SB)
-```
-
-- `runtime schedinit` 根据用户设置的 `GOMAXPROCS` 创建一批小车（p），这些小车初始化创建后都是闲置状态，也就是没有开始使用，所以它们都放置在调度结构（Sched）的 `pidle` 字段维护
-
-- `runtime newproc` 创建出第一个 goroutine，这个 goroutine 将执行的函数是 `runtime main`，这是第一个goroutine 也就是作为的主goroutine，任何一个Go程序的入口都是从这个goroutine开始的
-- 查看 `runtime main` 函数可以了解到主 goroutine 开始执行后，做的第一件事情是创建一个新的内核线程（地鼠M），不过这个线程是一个特殊线程，它在整个运行期专门负责做特定的事情 - 系统监控
-
-### 创建 goroutine
-
-go关键字就是用来创建一个goroutine的，后面的函数就是这个goroutine需要执行的代码逻辑。go关键字对应到调度器的接口就是`runtime·newproc`。`runtime·newproc` 干的事情很简单，就负责制造一块砖(G)，然后将这块砖(G)放入当前这个地鼠(M)的小车(P)中。
-
-### 创建内核线程
-
-Go程序中没有语言级的关键字让你去创建一个内核线程，你只能创建goroutine，内核线程只能由runtime根据实际情况去创建
-
-runtime什么时候创建线程？以地鼠运砖图来讲，砖(G)太多了，地鼠(M)又太少了，实在忙不过来，刚好还有空闲的小车(P)没有使用，那就从别处再借些地鼠(M)过来直到把小车(p)用完为止。这里有一个地鼠(M)不够用，从别处借地鼠(M)的过程，这个过程就是创建一个内核线程(M)
-
-```c
-void newm(void (*fn)(void), P *p)
-```
-
-newm函数的核心行为就是调用clone系统调用创建一个内核线程，每个内核线程的开始执行位置都是`runtime·mstart` 函数，newm接口只是给新创建的M分配了一个空闲的P，也就是相当于告诉借来的地鼠(M)接下来用哪个小车工作
-
-### 调度核心
-
-```c
-schedule(void)
-{
-	G *gp;
-
-	gp = runqget(m->p);
-	if(gp == nil)
-		gp = findrunnable();
-
-	if (m->p->runqhead != m->p->runqtail &&
-		runtime·atomicload(&runtime·sched.nmspinning) == 0 &&
-		runtime·atomicload(&runtime·sched.npidle) > 0)  // TODO: fast atomic
-		wakep();
-
-	execute(gp);
-}
-```
-
-调度的四大逻辑：
-
-1. `runqget`, 地鼠(M)试图从自己的小车(P)取出一块砖(G)，当然结果可能失败，也就是这个地鼠的小车已经空了，没有砖了。
-2. `findrunnable`, 如果地鼠自己的小车中没有砖，那也不能闲着不干活是吧，所以地鼠就会试图跑去工场仓库（调度器Sched的全局等待队列）取一块砖来处理；工场仓库也可能没砖啊，出现这种情况的时候，这个地鼠也没有偷懒停下干活，而是悄悄跑出去，随机盯上一个小伙伴(地鼠)，然后从它的车里试图偷一半砖到自己车里。如果多次尝试偷砖都失败了，那说明实在没有砖可搬了，这个时候地鼠就会把小车还回停车场，然后`睡觉`休息了。如果地鼠睡觉了，下面的过程当然都停止了，地鼠睡觉也就是线程sleep了。
-3. `wakep`, 到这个过程的时候，可怜的地鼠发现自己小车里有好多砖啊，自己根本处理不过来；再回头一看停车场居然有闲置的小车，查看是否由其他地鼠在睡觉，小伙伴醒了，拿上自己的小车，乖乖干活去了。有时候，可怜的地鼠发现没有在睡觉的小伙伴，于是会很失望，最后只好向系统提出申请：””停车场还有闲置的车，快从别的工场借个地鼠来帮忙吧”，最后系统就搞来一个新的地鼠干活了。
-4. `execute`，地鼠拿着砖放入火种欢快的烧练起来。
+G、P、M 都说完了，还有两个比较重要的组件没有提到：全局可运行队列（GRQ）和本地可运行队列（LRQ）。LRQ 存储本地（也就是具体的 P）的可运行 goroutine，GRQ 存储全局的可运行 goroutine，这些 goroutine 还没有分配到具体的 P。
 
 ![img](image/gopher-bz.jpg)
 
-地鼠偷砖的过程称为：work stealing 算法
+![img](image/goroutine.png)
 
-### 调度点
+Go scheduler 运行在用户空间 和 Os scheduler 抢占式调度（preemptive）不一样，Go scheduler 采用协作式调度（cooperating）。
+
+> Being a cooperating scheduler means the scheduler needs well-defined user space events that happen at safe points in the code to make scheduling decisions.
+
+协作式调度一般会由用户设置调度点，例如 python 中的 yield 会告诉 Os scheduler 可以将我调度出去了。
+
+### 调度时机
+
+在四种情况下，goroutine 有机会发生调度
+
+1. 使用关键字 go
+2. GC
+3. 系统调用
+4. 内存同步访问：atomic，mutex，channel 等操作会使goroutine 阻塞，因此会被调度走
 
 当我们翻看channel的实现代码可以发现，对channel读写操作的时候会触发调用 `runtime·park` 函数。goroutine调用park后，这个goroutine就会被设置位waiting状态，放弃cpu。被park的goroutine处于waiting状态，并且这个goroutine不在小车(P)中，如果不对其调用 `runtime·ready`，它是永远不会再被执行的
 
 除了park可以放弃cpu外，调用 `runtime·gosched` 函数也可以让当前goroutine放弃cpu，但和park完全不同，`gosched` 是将goroutine设置为runnable状态，然后放入到调度器全局等待队列
 
-### 上下文切换问题
+### work stealing
+
+Go scheduler 的职责就是将所有处于 runnable 的 goroutines 均匀分布到在 P 上运行的 M。当一个 P 发现自己的 LRQ 已经没有 G 时，会从其他 P “偷” 一些 G 来运行。
+
+Go scheduler 使用 M:N 模型，在任一时刻，M 个 goroutines（G） 要分配到 N 个内核线程（M）。每个 M 必须依附于一个 P（ 最多为 GOMAXPROCS ），每个 P 在同一时刻只能运行一个 M。如果 P 上的 M 阻塞了，那它就需要其他的 M 来运行 P 的 LRQ 里的 goroutines
+
+![img](image/work-stealing-1.png)
 
 上下文切换的成本只是goroutine切换的成本
 
 goroutine在cpu上换入换出，不断上下文切换的时候，必须要保证的事情就是`保存现场`和`恢复现场`，保存现场就是在goroutine放弃cpu的时候，将相关寄存器的值给保存到内存中；恢复现场就是在goroutine重新获得cpu的时候，需要从内存把之前的寄存器信息全部放回到相应寄存器中去。
+
+实际上，Go scheduler 每一轮调度要做的工作就是找到处于 runnable 的 goroutines，并执行它
+
+```c
+runtime.schedule() {
+    // only 1/61 of the time, check the global runnable queue for a G.
+    // if not found, check the local queue.
+    // if not found,
+    //     try to steal from other Ps.
+    //     if not, check the global runnable queue.
+    //     if not found, poll network.
+}
+```
+
+![img](image/work-stealing-2.png)
+
+### scheduler 的陷阱
 
 ## 简单的生产者消费者模型
 
