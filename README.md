@@ -25,6 +25,6 @@
 - [Go基础](/LearnGo.md)
 - [Effective GO](/EffectiveGO.md)
 - [go Web](/goweb.md)
-- [go Blog](/GOBlog.md)
+- [go Blog](/goblog.md)
 
 ## :penguin: [折腾Linux](/fixLinux.md)

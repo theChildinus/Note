@@ -415,3 +415,47 @@ func main() {
 }
 ```
 
+### 单例模式
+
+假设在一个数据库中，我们需要一个 repository 结构作为单例对象。请注意，我们应该使用小写字母定义结构，以使其成为私有。这将禁止在包外部使用该struct
+
+```go
+import (
+	"errors"
+	"sync"
+)
+
+type repository struct {
+	items map[string]string
+	mu sync.RWMutex
+}
+
+func (r *repository) Set(key, data string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.items[key] = data
+}
+
+func (r *repository) Get(key string) (string, error){
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	item, ok := r.items[key]
+	if !ok {
+		return "", errors.New("the key is not presented")
+	}
+	return item, nil
+}
+
+var (
+	r *repository
+	once sync.Once
+)
+
+func Repository() *repository {
+	once.Do(func() {
+		r = &repository{items: make(map[string]string)}
+	})
+	return r
+}
+```
+

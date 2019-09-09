@@ -419,8 +419,6 @@ templates.ExecuteTemplate(w, "layout", threads)
 
 程序通过调用 ExecuteTemplate 函数，执行已经经过语法分析的layout模板，即把模板文件中的内容和来自其他渠道的数据合并，然后产生最终的HTML
 
-
-
 ![](image/20190818174900.png)
 
 #### 整理代码
@@ -465,7 +463,7 @@ func index(writer http.ResponseWriter, request *http.Request) {
 7. 模板引擎会对模板文件进行语法分析并创建相应的模板，而这些模板又会与处理器传递的数据一起合并成最终的HTML
 8. 生成HTML会作为相应的一部分回传到客户端
 
-![1566313004353](D:\Note\image\1566313004353.png)
+![1566313004353](image/1566313004353.png)
 
 ## 第三章 接收请求
 
@@ -484,7 +482,7 @@ net/http标准库可以分为客户端和服务器两个部分，库中的结构
 - Client、Response、Header、Request 和 Cookie 对客户端进行支持
 - Server、ServeMux、Handler/HandleFunc、ResponseWriter、Header、Request 和 Cookie 则对服务器进行支持
 
-![1566313988982](D:\Note\image\1566313988982.png)
+![1566313988982.png](image/1566313988982.png)
 
 ### 3.2 Go Web 服务器
 
@@ -729,7 +727,7 @@ func (mux *ServeMux) HandleFunc(pattern string, handler func(ResponseWriter, *Re
 
 程序可以将一个函数传递给另一个函数，又或者通过标识符去引用一个具名函数，这意味着程序可以将函数 f1 传递给另一个函数 f2，然后在函数 f2 执行完某些操作之后调用 f1
 
-![1566392935190](D:\Note\image\1566392935190.png)
+![1566392935190](image/1566392935190.png)
 
 诸如日志记录、安全检查和错误处理这样的操作通常被称为 横切关注点，虽然这些操作非常常见，但是为了防止代码重复和代码依赖问题，我们又不希望这些操作额正常的代码搅和在一起，为此我们可以使用串联（chaining）技术分隔代码中的横切关注点
 
@@ -820,7 +818,7 @@ ServeMux 是一个HTTP请求多路复用器，它负责接受HTTP请求并根据
 
 ServeMux 结构包含了一个映射，这个映射会将URL映射至响应的处理器，因为 ServeMux 结构也实现了ServeHTTP 方法，所以它也是一个处理器，当 ServeMux 的 ServeHTTP 方法接收到一个请求的时候，他会在结构的映射里面找出与请求URL 最为匹配的 URL，然后调用与之相对应的处理器的 ServeHTTP 方法
 
-![1566392872414](D:\Note\image\1566392872414.png)
+![1566392872414](image/1566392872414.png)
 
 因为 ServeMux 是一个结构而不是一个接口，所以 DefaultServeMux 并不是 ServeMux 的实现，DefaultServeMux 实际上是 ServeMux 的一个实例，并且所有引入了 net/http 标准库的程序都可以使用这个实例，当用户没有为 Server 结构指定处理器时，服务器就会使用 DefaultServeMux 作为 ServeMux 的默认实例
 
