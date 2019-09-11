@@ -199,7 +199,63 @@ TCMalloc是google推出的一种内存分配器，常见的内存分配器还有
 
 ### TCmalloc 具体策略
 
-`TCMalloc` 分配的内存主要来自两个地方：全局缓存堆和进程的私有缓存。对于一些小容量的内存申请试用进程的私有缓存，私有缓存不足的时候可以再从全局缓存申请一部分作为私有缓存。对于大容量的内存申请则需要从全局缓存中进行申请。而大小容量的边界就是32k。缓存的组织方式是一个单链表数组，数组的每个元素是一个单链表，链表中的每个元素具有相同的大小。
+与操作系统管理内存的方式类似，TCMalloc将整个虚拟内存空间划分为n个同等大小的**Page**，每个page默认8KB。又将连续的n个page称为一个**Span**。
+
+TCMalloc定义了**PageHeap**类来处理向OS申请内存相关的操作，并提供了一层缓存。可以认为，PageHeap就是整个可供应用程序动态分配的内存的抽象。
+
+PageHeap以span为单位向系统申请内存，申请到的span可能只有一个page，也可能包含n个page。可能会被划分为一系列的小对象，供小对象分配使用，也可能当做一整块当做中对象或大对象分配。
+
+#### 小对象分配
+
+小对象的分配直接从ThreadCache的FreeList中返回一个空闲对象，相应的，小对象的回收也是将其重新放回ThreadCache中对应的FreeList中。
+
+由于每线程一个ThreadCache，因此从ThreadCache中取用或回收内存是**不需要加锁**的，速度很快。
+
+为了方便统计数据，各线程的ThreadCache连接成一个双向链表。ThreadCache的结构示大致如下：
+
+![img](image/threadCache.png)
+
+![img](image/centralcache.png)
+
+分配流程：
+
+- 将要分配的内存大小映射到对应的size class。
+
+- 查看ThreadCache中该size class对应的FreeList。
+
+- 如果FreeList非空，则移除FreeList的第一个空闲对象并将其返回，分配结束。
+
+- 如果FreeList是空的：
+
+  - 从CentralCache中size class对应的CentralFreeList获取一堆空闲对象。
+    - 如果CentralFreeList也是空的，则：
+      - 向PageHeap申请一个span。
+      - 拆分成size class对应大小的空闲对象，放入CentralFreeList中。
+  - 将这堆对象放置到ThreadCache中size class对应的FreeList中（第一个对象除外）。
+  - 返回从CentralCache获取的第一个对象，分配结束。
+
+
+#### 中对象和大对象分配
+
+中对象：假设要分配一块内存，其大小经过向上取整之后对应k个page，因此需要从PageHeap取一个大小为k个page的span，过程如下：
+
+- 从k个page的span链表开始，到128个page的span链表，按顺序找到第一个非空链表。
+- 取出这个非空链表中的一个span，假设有n个page，将这个span拆分成两个span：
+  - 一个span大小为k个page，作为分配结果返回。
+  - 另一个span大小为n - k个page，重新插入到n - k个page的span链表中。
+- 如果找不到非空链表，则将这次分配看做是大对象分配
+
+![img](image/pageheap.png)
+
+大对象：PageHeap的span set中取一个大小为k个page的span，其过程如下：
+
+- 搜索set，找到不小于k个page的最小的span（**best-fit**），假设该span有n个page。
+- 将这个span拆分为两个span：
+  - 一个span大小为k个page，作为结果返回。
+  - 另一个span大小为n - k个page，如果n - k > 128，则将其插入到大span的set中，否则，将其插入到对应的小span链表中。
+- 如果找不到合适的span，则使用sbrk或mmap向系统申请新的内存以生成新的span，并重新执行中对象或大对象的分配算法。
+
+![img](image/TCMalloc.png)
 
 ## Go GC
 
