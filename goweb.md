@@ -870,3 +870,79 @@ curl -I --http2 --insecure https://localhost:8080/
 ```
 
 ## 第四章 处理请求
+
+### 4.1 请求和响应
+
+Request 结构表示一个由客户端发送的HTTP请求报文，主要由以下部分组成：
+
+- URL字段  `URL *url.URL`
+- Header 字段 `Header Header`
+- Body字段 `Body io.ReadCloser`
+- Form字段、PostForm字段 和 MultipartForm 字段 `Form url.Values`   `PostForm url.Values`  `MultipartForm *multipart.Form`
+
+#### 请求URL
+
+Request 结构中的URL字段用于表示请求行中包含的URL
+
+```go
+type URL struct {
+	Scheme     string
+	Opaque     string    // encoded opaque data
+	User       *Userinfo // username and password information
+	Host       string    // host or host:port
+	Path       string    // path (relative paths may omit leading slash)
+	RawPath    string    // encoded path hint (see EscapedPath method)
+	ForceQuery bool      // append a query ('?') even if RawQuery is empty
+	RawQuery   string    // encoded query values, without '?'
+	Fragment   string    // fragment for references, without '#'
+}
+```
+
+URL 的一般格式：
+
+scheme://[userinfo@] host/path [?query] [#fragment]
+
+虽然通过对 RawQuery 字段的值进行语法分析可以获取到键值对格式的查询参数，但直接使用Request结构的Form 字段来获取这些键值对会更加方便一些
+
+如果请求报文是由浏览器发送的，那么程序将无法通过URL结构的 Fragment 字段获取URL的片段部分，造成这个原因在与浏览器而非 net/http 库，但是除了浏览器发送的请求外，服务器还可能收会接收到HTTP客户端库、Angular这样的客户端框架或者某些其他工具发送的请求
+
+#### 请求首部
+
+请求和响应的首部都使用Header类型描述，这种类型使用一个映射来表示HTTP首部中的多个键值对，Header类型拥有4种基本方法，这些方法可以根据给定的键执行添加、删除、获取和设置值等操作
+
+```go
+func headers(w http.ResponseWriter, r *http.Request) {
+	_, _ = fmt.Fprintln(w, r.Header)
+    // 获取具体的字段值： r.Header["Accept-Encoding"] 或 r.Header.Get("Accept-Encoding")
+    // 前者得到一个字符串切片，后者调用 Get方法将返回字符串形式的首部值，其中多个首部值使用逗号分隔
+}
+
+func main() {
+	server := http.Server{Addr:"127.0.0.1:8080"}
+	http.HandleFunc("/headers", headers)
+	err := server.ListenAndServe()
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+}
+```
+
+
+
+```txt
+map[
+    Accept: [text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3] 
+    Accept-Encoding: [gzip, deflate, br] 
+    Accept-Language: [zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7] 
+    Connection: [keep-alive] 
+    Sec-Fetch-Mode: [navigate] 
+    Sec-Fetch-Site: [none] 
+    Sec-Fetch-User: [?1] 
+    Upgrade-Insecure-Requests: [1] 
+    User-Agent: [Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.75 Safari/537.36]
+]
+```
+
+#### 请求主体
+
+请求和响应的主体都是由Request结构的 Body 字段表示的
