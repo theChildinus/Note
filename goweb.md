@@ -512,7 +512,7 @@ func main() {
         Addr: "127.0.0.1:8080",
         Handler: nil,
     }
-    http.ListenAndServe("", nil)
+    server.ListenAndServe("", nil)
 }
 ```
 
@@ -529,7 +529,7 @@ func main() {
         Addr: "127.0.0.1:8080",
         Handler: nil,
     }
-    http.ListenAndServeTLS("cert.pem", "key.pem")
+    server.ListenAndServeTLS("cert.pem", "key.pem")
 }
 ```
 
@@ -1222,4 +1222,135 @@ func jsonExample(w http.ResponseWriter, r *http.Request) {
 ```
 
 ### 4.4 cookie
+
+cookie 是一种 存储在客户端的、体积较小的信息，这新信息最初都是由服务器通过HTTP响应报文发送的，每当客户端向服务器发送一个HTTP请求时，cookie都会随着请求被一同发送至服务器
+
+cookie可以被划分为 会话cookie 和持久 cookie两种类型
+
+```go
+// A Cookie represents an HTTP cookie as sent in the Set-Cookie header of an
+// HTTP response or the Cookie header of an HTTP request.
+//
+// See https://tools.ietf.org/html/rfc6265 for details.
+type Cookie struct {
+	Name  string
+	Value string
+
+	Path       string    // optional
+	Domain     string    // optional
+	Expires    time.Time // optional
+	RawExpires string    // for reading cookies only
+
+	// MaxAge=0 means no 'Max-Age' attribute specified.
+	// MaxAge<0 means delete cookie now, equivalently 'Max-Age: 0'
+	// MaxAge>0 means Max-Age attribute present and given in seconds
+	MaxAge   int
+	Secure   bool
+	HttpOnly bool
+	SameSite SameSite
+	Raw      string
+	Unparsed []string // Raw text of unparsed attribute-value pairs
+}
+```
+
+没有设置 Expires 字段的cookie通常被称为会话cookie 或者临时cookie，这种cookie在浏览器关闭的时候就会自动被移除
+
+MaxAge 也可以用于设置 cookie 的过期时间
+
+#### 将cookie发送至浏览器
+
+Cookie结构的 String方法可以返回一个经过序列化处理的 cookie，其中 Set-Cookie 响应首部的值就是由这些序列化之后的cookie 组成的
+
+```go
+func setCookie(w http.ResponseWriter, r *http.Request) {
+	c1 := http.Cookie{
+		Name:       "first_cookie",
+		Value:      "Go Web Programming",
+		HttpOnly:   true,
+	}
+	c2 := http.Cookie{
+		Name:       "second_cookie",
+		Value:      "Manning Publications Co",
+		HttpOnly:   true,
+	}
+	w.Header().Set("Set-Cookie", c1.String())
+	w.Header().Add("Set-Cookie", c2.String())
+}
+```
+
+除了 Set方法和 Add 方法之外，Go语言还提供了一种更为快捷方便的cookie设置方法，那就是net/httpde SetCookie方法
+
+```go
+http.SetCookie(w, &c1)
+http.SetCookie(w, &c2)
+```
+
+![1568898611184](image/1568898611184.png)
+
+#### 从浏览器获取cookie
+
+```go
+func getCookie(w http.ResponseWriter, r *http.Request) {
+	h := r.Header["Cookie"]
+	fmt.Fprintln(w, h)
+}
+// [first_cookie="Go Web Programming"; second_cookie="Manning Publications Co"]
+```
+
+语句 r.Header["Cookie"] 返回一个切片，这个切片包含了一个字符串，而这个字符串又包含任意多个cookie
+
+```go
+c1, err := r.Cookie("first_cookie")
+if err != nil {
+    fmt.Fprintln(w, "Cannot get the first cookie")
+}
+cs := r.Cookies()
+fmt.Fprintln(w, c1)
+// first_cookie="Go Web Programming"
+fmt.Fprintln(w, cs)
+// [first_cookie="Go Web Programming"; second_cookie="Manning Publications Co"]
+```
+
+上面展示的代码在设置 cookie 时并没有为这些cookie 设置相应的过期时间，所以它们都是会话cookie
+
+#### 使用cookie 实现闪现消息
+
+闪现消息：页面上显示一条临时出现的消息，这样用户在刷新页面之后就不会再看见相同的消息
+
+```go
+func setMessage(w http.ResponseWriter, r *http.Request) {
+	msg := []byte("hello world")
+	c := http.Cookie{Name:"flash", Value: base64.URLEncoding.EncodeToString(msg)}
+	http.SetCookie(w, &c)
+}
+```
+
+setMessage 处理函数对消息使用了base64URL编码
+
+```go
+func showMessage(w http.ResponseWriter, r *http.Request) {
+	c, err := r.Cookie("flash")
+	if err != nil {
+		if err == http.ErrNoCookie {
+			fmt.Fprintln(w, "No message found")
+		}
+	} else {
+		rc := http.Cookie{
+			Name:       "flash",
+			Expires:    time.Unix(1, 0),
+			MaxAge:     -1,
+		}
+		http.SetCookie(w, &rc)
+		val, _ := base64.URLEncoding.DecodeString(c.Value)
+		fmt.Fprintln(w, string(val))
+	}
+}
+```
+
+showMessage 首先会尝试获取指定的cookie，如果没有找到该cookie则返回 ErrNoCookie值，如果有它必须完成以下两个操作：
+
+1. 创建一个同名cookie，将他的 MaxAge 设为负数，并将 Expires值也设为一个过去的时间
+2. 使用 SetCookie 方法将刚刚创建的同名cookie发送至客户端
+
+show_message 会将之前设置的cookie删除
 
