@@ -946,3 +946,154 @@ map[
 #### 请求主体
 
 请求和响应的主体都是由Request结构的 Body 字段表示的
+
+Body 是一个 io.Read Closer 接口，该接口既包含了 Reader 接口，也包含了 Closer 接口
+
+其中Reader 接口拥有 Read 方法，这个方法接受一个字节切片作为输入，并在执行之后返回被读取内容的字节数以及一个可选的错误作为结果
+
+Closer 接口拥有 Close 方法，这个方法不接受任何参数，但会在出错时返回一个错误 用户可以对 Body 字段调用 Read 方法和 Close 方法
+
+```go
+	len := r.ContentLength
+	body := make([]byte, len)
+	r.Body.Read(body)
+	_, _ = fmt.Fprintln(w, string(body))
+```
+
+测试方法：
+
+```txt
+curl -id "POST context" 127.0.0.1:8080/body
+```
+
+### 4.2 Go 与 HTML 表单
+
+用户在表单中输入的数据会以键值对的形式记录在请求的主体中，然后以HTTP POST 请求的形式发送到服务器
+
+```html
+<form action="/process" method="post">
+    <input type="text" name="first_name"/>
+    <input type="text" name="last_name"/>
+    <input type="submit"/>
+</form>
+```
+
+服务器在接收到浏览器发送的表单数据之后，还需要对这些数据进行语法分析，从而提取出数据记录的键值对，因此我们需要知道这些键值对在请求主体中是如何格式化的
+
+HTML 表单的内容类型是由 表单的 enctype 属性指定的
+
+浏览器至少需要支持 application/x-www-form-urlencoded 和 multipart/form-data 这两种编码，除了以上两种编码方式HTML5 还支持 text/plain 编码方式
+
+- 如果表单传输的是简单的文本，那么使用URL编码格式更好
+- 如果表单需要传输大量数据，那么使用 multipart/form-data 编码格式会更好
+- 用户还可以通过 Base64 编码以文本方式传送二进制数据
+
+#### Form 字段
+
+通过调用 Request结构提供的方法，用户可以将 URL、主体 又或者以上两者记录的数据提取到该结构的 Form、PostForm 和 MultipartForm 等字段当中，跟我们平常通过POST 请求获取到的数据一样，存储在这些字段里面的数据也是以键值对形式表示的，使用Request 结构的方法获取表单数据的一般步骤：
+
+- 调用 ParseForm 方法 或者 ParseMultipartForm 方法对请求进行语法分析
+- 访问相应的 Form字段、PostForm字段 或者 MultipartForm 字段
+
+```go
+func process(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	fmt.Fprintln(w, r.Form)
+}
+```
+
+client.html 文件：
+
+```html
+<html>
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+        <title>GoWebProgramming</title>
+    </head>
+    <body>  
+        <form action=http://127.0.0.1:8080/process?hello=world&thread=123 method="post" enctype="application/x-www-form-urlencoded">
+            <input type="text" name="hello" value="sau sheong"/>
+            <input type="text" name="post" value="456"/>
+            <input type="submit"/>
+        </form>
+    </body>
+</html>
+```
+
+点击提交表单后显示输出：
+
+```txt
+map[thread:[123] hello:[sau sheong world] post:[456]]
+```
+
+hello 提供了两个不同的值，值 world 是通过URL 提供的，而值 sau sheong 则是通过HTML表单中的文本输入行提供的
+
+#### PostForm 字段
+
+如果一个 键同时拥有表单键值对和URL键值对，但是用户想要获取表单键值对而不是URL键值对，可以访问Request结构的PostForm字段，这个字段只会包含键的表单值，而不包含同名键的URL值
+
+PostForm 字段只支持 application/x-www-form-urlencoded 编码
+
+#### MultipartForm 字段
+
+为了获取 multipart/form-data 编码的表单数据，我们需要用到 Request 结构的 ParseMultipartForm 方法和 MultipartForm 字段
+
+因为 MultipartForm 字段只包含表单键值对而不包含 URL 键值对 另外，MultipartForm字段 是一个包含了两个映射的结构
+
+- 其中第一个映射的键为字符串，值为字符串组成的切片
+- 第二个映射用来记录用户上传的文件
+
+```go
+// Form is a parsed multipart form.
+// Its File parts are stored either in memory or on disk,
+// and are accessible via the *FileHeader's Open method.
+// Its Value parts are stored as strings.
+// Both are keyed by field name.
+type Form struct {
+	Value map[string][]string
+	File  map[string][]*FileHeader
+}
+```
+
+```go
+// Form contains the parsed form data, including both the URL
+// field's query parameters and the POST or PUT form data.
+// This field is only available after ParseForm is called.
+// The HTTP client ignores Form and uses Body instead.
+Form url.Values
+
+// PostForm contains the parsed form data from POST, PATCH,
+// or PUT body parameters.
+//
+// This field is only available after ParseForm is called.
+// The HTTP client ignores PostForm and uses Body instead.
+PostForm url.Values
+
+// MultipartForm is the parsed multipart form, including file uploads.
+// This field is only available after ParseMultipartForm is called.
+// The HTTP client ignores MultipartForm and uses Body instead.
+MultipartForm *multipart.Form
+```
+
+Request 还提供了另一些方法获取表单中的键值对
+
+FormValue 方法允许直接访问与给定键相关联的值，区别是 FormValue 方法在需要时会自动调用 ParseForm 方法或者 ParseMultipartForm 方法
+
+```go
+// 即使 给定键拥有多个值的情况下，也只会从form结构中取出给定键的第一个值
+fmt.Fprintln(w, r.FormValue("hello")) 
+// sau sheong
+
+fmt.Fprintln(w, r.Form) 
+// map[thread:[123] hello:[sau sheong world] post:[456]]
+```
+
+| 字段          | 需要调用的方法或者访问的字段 | 键值对来源-URL | 键值对来源-表单 | 内容类型-URL编码 | 内容类型-Mulitpart编码 |
+| :------------ | :--------------------------- | :------------: | :-------------: | :--------------: | :--------------------: |
+| Form          | ParseForm方法                |       OK       |       OK        |        OK        |           —            |
+| PostForm      | Form字段                     |       —        |       OK        |        OK        |           —            |
+| MultipartForm | ParseMultipartForm方法       |       —        |       OK        |        —         |           OK           |
+| FormValue     | 无                           |       OK       |       OK        |        OK        |           —            |
+| PostFormValue | 无                           |       —        |       OK        |        OK        |           —            |
+
+#### 文件
