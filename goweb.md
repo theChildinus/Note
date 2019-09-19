@@ -1011,7 +1011,7 @@ client.html 文件：
         <title>GoWebProgramming</title>
     </head>
     <body>  
-        <form action=http://127.0.0.1:8080/process?hello=world&thread=123 method="post" enctype="application/x-www-form-urlencoded">
+        <form action="http://127.0.0.1:8080/process?hello=world&thread=123" method="post" enctype="application/x-www-form-urlencoded">
             <input type="text" name="hello" value="sau sheong"/>
             <input type="text" name="post" value="456"/>
             <input type="submit"/>
@@ -1097,3 +1097,129 @@ fmt.Fprintln(w, r.Form)
 | PostFormValue | 无                           |       —        |       OK        |        OK        |           —            |
 
 #### 文件
+
+multipart/form-data 编码通常用于实现文件上传功能，这种功能需要用到file类型的input标签
+
+```html
+<form action="http://127.0.0.1:8080/process?hello=world&thread=123" method="post" enctype="multipart/form-data">
+    <input type="file" name="uploaded">
+</form>
+```
+
+为了能够接受表单上传的文件，处理器函数也需要做相应的修改
+
+```go
+func process(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseMultipartForm(1024)
+	fileHeader := r.MultipartForm.File["uploaded"][0]
+	file, err := fileHeader.Open()
+	if err == nil {
+		data, err := ioutil.ReadAll(file)
+		if err == nil {
+			_, _ = fmt.Fprintln(w, string(data))
+		}
+	}
+}
+```
+
+或者使用 FormFile，调用时返回给定键的第一个值，在客户端只上传了一个文件的情况下会很方便，不需要手动调用 ParseMultipartForm
+
+```go
+func process(w http.ResponseWriter, r *http.Request) {
+	file, _, err := r.FormFile("uploaded")
+	if err == nil {
+		data, err := ioutil.ReadAll(file)
+		if err == nil {
+			fmt.Fprintln(w, string(data))
+		}
+	}
+}
+```
+
+#### 处理带有JSON主体的POST请求
+
+使用ParseForm 方法是无法从 Angular 客户端发送的 POST 请求中获取 JSON 数据的，但使用 jQuery 这样的 JavaScript 库却不会出现这样的问题
+
+问题的原因是没有足够的文档对这种行为进行说明
+
+### 4.3 ResponseWriter
+
+首先创建一个 Response 结构，接着将数据存储到这个结构里面，最后将这个结构返回给客户端，如果你认为服务器是通过这种方式向客户端返回响应的那么就错了
+
+服务器在向客户端返回响应的时候，真正需要用到的是 ResponseWriter 接口，处理器可以通过这个接口创建HTTP响应，ResponseWriter 在创建响应时会用到 http.response 结构，因为该结构是一个非导出的结构，所以用户只能通过 ResponseWriter 来使用这个结构
+
+**为什么要以传值的方式将 ResponseWriter 传递给 ServeHTTP？**
+
+ServeHTTP 接受 Request 结构指针的原因很简单，为了让服务器能够察觉到 处理器对 Reqeust 结构的修改
+
+ResponseWriter 实际上就是response这个非导出结构的接口，而ResponseWriter 在使用 response 结构时，传递的也是指向 response 结构的指针，这也就是说，ResponseWriter 是以传引用的方式使用 response 结构
+
+ResponseWriter 拥有三个方法：
+
+- Write
+- WriteHeader
+- Header
+
+#### 对ResponseWriter 进行写入
+
+**Write 方法 ** 接受一个字节数组作为参数，并将数组中的字节写入HTTP响应的主体中，如果用户在使用Write方法执行写入操作的时候，没有为首部设置相应的内容类型，那么相应的内容类型将通过检查被写入的前 512 字节决定
+
+```go
+func writeExample(w http.ResponseWriter, r *http.Request) {
+	str := `<html><head><title>GoWebProgramming</title></head>
+    <body><h1>Hello World</h1></body></html>`
+	w.Write([]byte(str))
+}
+
+func main() {
+	server := http.Server{Addr:"127.0.0.1:8080"}
+	http.HandleFunc("/write", writeExample)
+	_ = server.ListenAndServe()
+}
+```
+
+**WriteHeader 方法** 并不能用于设置响应的首部，Header才是，WriteHeader 方法接受一个代表HTTP响应状态码的整数作为参数，并将这个整数用作HTTP响应的返回状态码，在调用这个方法之后，用户可以继续对 ResponseWriter进行写入，但是不能对 响应的首部做任何写入操作
+
+如果用户在调用Write 方法之前没有执行过 WriteHeader 方法，那么程序默认会使用 200OK 作为响应的状态码
+
+WriteHeader 方法在返回错误状态码时特别有用，如果定义了一个API，但是尚未实现，那么可以返回一个 501 Not Implemented
+
+```go
+func writeHeaderExample(w http.ResponseWriter, r *http.Request) {
+    w.WriteHeader(501)
+    fmt.Fprintln(w, "No such service, try next door")
+}
+```
+
+**Header方法** 可以取得一个由首部组成的映射，修改这个映射可以修改首部
+
+```go
+func headerExample(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Location", "http://google.com")
+	w.WriteHeader(302)
+}
+func main() {
+	server := http.Server{Addr:"127.0.0.1:8080"}
+	http.HandleFunc("/write", writeExample)
+	http.HandleFunc("/writeheader", writeHeaderExample)
+	http.HandleFunc("/redirect", headerExample)
+	_ = server.ListenAndServe()
+}
+```
+
+通过 ResponseWriter 直接向客户端 返回 JSON 数据的方法
+
+```go
+func jsonExample(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Context-Type", "application/json")
+	post := &Post{
+		User:    "Sau Sheong",
+		Threads: []string{"first", "second", "third"},
+	}
+	json, _ := json.Marshal(post)
+	_, _ = w.Write(json)
+}
+```
+
+### 4.4 cookie
+
